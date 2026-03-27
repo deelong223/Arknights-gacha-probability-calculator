@@ -1,5 +1,42 @@
-export function calculateMultiBanner(targets: number[], initialPity: number, initialBudget: number): number {
-    const iterations = 100000;
+// gacha.ts
+
+export interface RandomGenerator {
+    (): number;
+}
+
+/**
+ * 建立一個固定種子的隨機數生成器
+ * @param seed 種子值
+ * @returns 隨機函數
+ */
+export function createSeededRandom(seed: number): RandomGenerator {
+    let currentSeed = seed;
+    // 線性同餘生成器 (LCG) - 常用參數
+    const a = 1103515245;
+    const c = 12345;
+    const m = 0x7fffffff;
+    
+    return () => {
+        currentSeed = (currentSeed * a + c) & m;
+        return currentSeed / m;
+    };
+}
+
+/**
+ * 計算多池抽卡成功率
+ * @param targets 各池目標數量，0表示跳過該池
+ * @param initialPity 初始保底次數
+ * @param initialBudget 初始預算（可用抽數）
+ * @param randomFn 隨機函數，預設為 Math.random，可傳入固定種子的函數使結果可重現
+ * @param iterations 模擬次數，預設 100000
+ */
+export function calculateMultiBanner(
+    targets: number[], 
+    initialPity: number, 
+    initialBudget: number, 
+    randomFn: RandomGenerator = Math.random,
+    iterations: number = 100000
+): number {
     let successCount = 0;
 
     // Find the last banner that has a target > 0
@@ -12,7 +49,7 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
     if (lastBannerIndex === -1) return 1.0;
 
     for (let i = 0; i < iterations; i++) {
-        if (runSimulation(targets, initialPity, initialBudget, lastBannerIndex)) {
+        if (runSimulation(targets, initialPity, initialBudget, lastBannerIndex, randomFn)) {
             successCount++;
         }
     }
@@ -20,7 +57,13 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
     return successCount / iterations;
 }
 
-function runSimulation(targets: number[], initialPity: number, initialBudget: number, lastBannerIndex: number): boolean {
+function runSimulation(
+    targets: number[], 
+    initialPity: number, 
+    initialBudget: number, 
+    lastBannerIndex: number,
+    randomFn: RandomGenerator
+): boolean {
     let pity = initialPity;
     let budget = initialBudget;
     let nextBannerExtra = 0;
@@ -78,10 +121,10 @@ function runSimulation(targets: number[], initialPity: number, initialBudget: nu
                     prob = 1.0;
                 }
                 
-                is6Star = Math.random() < prob;
+                is6Star = randomFn() < prob;
                 if (is6Star) {
                     // Rule 7: 50% chance for limited
-                    isLimited = Math.random() < 0.5;
+                    isLimited = randomFn() < 0.5;
                 }
             }
 
@@ -104,10 +147,10 @@ function runSimulation(targets: number[], initialPity: number, initialBudget: nu
                         p30 = 1.0;
                     }
                     
-                    let is6Star30 = Math.random() < p30;
+                    let is6Star30 = randomFn() < p30;
                     if (is6Star30) {
                         pity = 0;
-                        if (Math.random() < 0.5) {
+                        if (randomFn() < 0.5) {
                             hasPulledLimited = true;
                             copies++;
                         }
