@@ -1,10 +1,8 @@
-// gacha-dp-final.ts
+// gacha-dp-corrected.ts
 
 /**
- * 計算多池抽卡成功率（動態規劃 + 剪枝 + Float64Array）
- * @param targets 各池目標數量，0表示跳過
- * @param initialPity 初始保底 (0~79)
- * @param initialBudget 初始預算
+ * 計算多池抽卡成功率（動態規劃，剩餘總資源 + 保底）
+ * 單池內部完全匹配原版邏輯（10連一次性處理，使用二項分佈）
  */
 export function calculateMultiBanner(
     targets: number[],
@@ -58,7 +56,7 @@ export function calculateMultiBanner(
                 const transitions = transitionsForPity[p];
                 for (const trans of transitions) {
                     const { pulls, endPity, prob: transProb, gotExtra } = trans;
-                    if (r < pulls) continue; // 資源不足
+                    if (r < pulls) continue;
                     let newRemaining = r - pulls + (gotExtra ? 10 : 0);
                     if (newRemaining > maxRemaining) newRemaining = maxRemaining;
                     const newProb = prob * transProb;
@@ -70,7 +68,6 @@ export function calculateMultiBanner(
         dp = nextDp;
     }
 
-    // 所有剩餘狀態都算成功
     let successProb = 0;
     for (let i = 0; i < dp.length; i++) {
         successProb += dp[i];
@@ -78,19 +75,19 @@ export function calculateMultiBanner(
     return Math.min(1.0, successProb);
 }
 
-// ---------- 單池精確轉移（動態規劃）----------
+// ---------- 單池轉移（與原版完全一致，使用二項分佈一次性處理10連）----------
 interface Transition {
-    pulls: number;      // 消耗的總抽數（不含贈送10連）
+    pulls: number;
     endPity: number;
     prob: number;
-    gotExtra: boolean;  // pulls >= 60
+    gotExtra: boolean;
 }
 
-const bannerTransCache = new Map<string, Transition[]>();
+const transCache = new Map<string, Transition[]>();
 
 function getBannerTransition(initialPity: number, target: number, isLast: boolean): Transition[] {
     const cacheKey = `${initialPity}_${target}_${isLast}`;
-    if (bannerTransCache.has(cacheKey)) return bannerTransCache.get(cacheKey)!;
+    if (transCache.has(cacheKey)) return transCache.get(cacheKey)!;
 
     const results: Transition[] = [];
 
@@ -102,25 +99,31 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
     let curr = new Float64Array(stateSize);
     curr[idx(initialPity, 0, 0)] = 1.0;
 
+    // 預計算30抽10連的二項分佈 (每次獲得限定的概率 = 0.008 * 0.5 = 0.004)
+    const binomProbs = new Float64Array(11);
+    for (let k = 0; k <= 10; k++) {
+        binomProbs[k] = binomial(10, 0.004, k);
+    }
+
     let pulls = 0;
-    // 動態上限：每個目標最多200抽
-    const maxPulls = Math.min(5000, target * 200 + 500);
+    const MAX_PULLS = 5000; // 足夠大，實際會提前終止
 
     while (true) {
-        // 1. 30抽里程碑：贈送10連（不消耗資源、不計入 pulls、不影響保底）
+        // 1. 30抽里程碑：一次性處理10連（二項分佈）
         if (pulls === 30) {
             let next = new Float64Array(stateSize);
-            const tenPullResults = getTenPullDist(); // 固定分佈，不依賴 pity
             for (let p = 0; p < 80; p++) {
                 for (let c = 0; c <= maxCopies; c++) {
                     for (let h = 0; h < 2; h++) {
                         const prob = curr[idx(p, c, h)];
-                        if (prob < 1e-16) continue;
-                        for (const res of tenPullResults) {
-                            const newCopies = Math.min(maxCopies, c + res.limitedGain);
-                            const newHasLimited = h || (res.limitedGain > 0 ? 1 : 0);
-                            // pity 保持不變
-                            next[idx(p, newCopies, newHasLimited)] += prob * res.prob;
+                        if (prob < 1e-12) continue;
+                        for (let k = 0; k <= 10; k++) {
+                            const probK = binomProbs[k];
+                            if (probK < 1e-12) continue;
+                            const newCopies = Math.min(maxCopies, c + k);
+                            const newHasLimited = h || (k > 0 ? 1 : 0);
+                            // 注意：pity 保持不變
+                            next[idx(p, newCopies, newHasLimited)] += prob * probK;
                         }
                     }
                 }
@@ -151,7 +154,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
                 }
             }
         }
-        if (!active || pulls >= maxPulls) break;
+        if (!active || pulls >= MAX_PULLS) break;
 
         // 3. 進行一次正常抽卡（消耗資源）
         pulls++;
@@ -198,32 +201,10 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
         curr = next;
     }
 
-    bannerTransCache.set(cacheKey, results);
+    transCache.set(cacheKey, results);
     return results;
 }
 
-// ---------- 10連抽分佈（不影響保底，固定機率）---------
-const tenPullDistCache: { limitedGain: number, prob: number }[] | null = null;
-
-function getTenPullDist(): { limitedGain: number, prob: number }[] {
-    // 固定結果，只需計算一次
-    if (tenPullDistCache) return tenPullDistCache;
-    
-    const BASE_RATE = 0.008;
-    const LIMITED_RATE = 0.5;
-    const p = BASE_RATE * LIMITED_RATE; // 0.004
-    
-    const results: { limitedGain: number, prob: number }[] = [];
-    for (let k = 0; k <= 10; k++) {
-        const prob = binomial(10, p, k);
-        if (prob > 1e-12) {
-            results.push({ limitedGain: k, prob });
-        }
-    }
-    return results;
-}
-
-// 二項分佈輔助函數
 function binomial(n: number, p: number, k: number): number {
     let coeff = 1;
     for (let i = 1; i <= k; i++) {
