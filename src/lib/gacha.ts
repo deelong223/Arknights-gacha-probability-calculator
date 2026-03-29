@@ -1,11 +1,10 @@
-// gacha-dp-corrected.ts
+// gacha-dp-optimized.ts
 
 /**
- * 计算多池抽卡成功率（动态规划，剩余总资源 + 保底）
- * @param targets 各池目标数量，0 表示跳过
+ * 計算多池抽卡成功率（動態規劃 + 剪枝 + Float64Array）
+ * @param targets 各池目標數量，0表示跳過
  * @param initialPity 初始保底 (0~79)
- * @param initialBudget 初始预算（总可用抽数）
- * @returns 成功概率
+ * @param initialBudget 初始預算
  */
 export function calculateMultiBanner(
     targets: number[],
@@ -18,90 +17,112 @@ export function calculateMultiBanner(
     }
     if (lastBannerIndex === -1) return 1.0;
 
-    // 最大剩余资源：初始预算 + 每个池最多奖励10（保守估计）
+    // 最大剩餘資源：初始預算 + 每個池最多獎勵10
     const maxRemaining = initialBudget + 10 * targets.length;
-    let dp = new Map<string, number>();
-    dp.set(`${initialBudget}|${initialPity}`, 1.0);
+    const PITY_STATES = 80;
+    const stateSize = (maxRemaining + 1) * PITY_STATES;
+    let dp = new Float64Array(stateSize);
+    dp[initialBudget * PITY_STATES + initialPity] = 1.0;
 
     for (let i = 0; i <= lastBannerIndex; i++) {
         const target = targets[i];
         const isLast = i === lastBannerIndex;
-        const nextDp = new Map<string, number>();
+        const nextDp = new Float64Array(stateSize);
 
         if (target === 0) {
-            // 跳过该池：剩余资源不变，保底不变
-            for (const [key, prob] of dp) {
-                nextDp.set(key, (nextDp.get(key) || 0) + prob);
+            // 跳過該池：剩餘資源不變，保底不變
+            for (let r = 0; r <= maxRemaining; r++) {
+                for (let p = 0; p < PITY_STATES; p++) {
+                    const prob = dp[r * PITY_STATES + p];
+                    if (prob > 1e-12) {
+                        nextDp[r * PITY_STATES + p] += prob;
+                    }
+                }
             }
             dp = nextDp;
             continue;
         }
 
-        for (const [key, prob] of dp) {
-            const [remaining, pityIn] = key.split('|').map(Number);
-            const transitions = getBannerTransition(pityIn, target, isLast);
-            for (const trans of transitions) {
-                const { pulls, endPity, prob: transProb, gotExtra } = trans;
-                if (remaining < pulls) continue; // 资源不足
-                let newRemaining = remaining - pulls + (gotExtra ? 10 : 0);
-                const newKey = `${newRemaining}|${endPity}`;
-                nextDp.set(newKey, (nextDp.get(newKey) || 0) + prob * transProb);
+        // 預先取得此池的所有轉移 (pityIn -> 多個結果)
+        // 我們需要對每個可能的入池 pity 進行轉移
+        // 為了加速，預先計算所有 pityIn 的轉移列表並快取
+        const transitionsForPity = new Array(PITY_STATES);
+        for (let pityIn = 0; pityIn < PITY_STATES; pityIn++) {
+            transitionsForPity[pityIn] = getBannerTransition(pityIn, target, isLast);
+        }
+
+        // 遍歷所有非零狀態
+        for (let r = 0; r <= maxRemaining; r++) {
+            for (let p = 0; p < PITY_STATES; p++) {
+                const prob = dp[r * PITY_STATES + p];
+                if (prob < 1e-12) continue;
+
+                const transitions = transitionsForPity[p];
+                for (const trans of transitions) {
+                    const { pulls, endPity, prob: transProb, gotExtra } = trans;
+                    if (r < pulls) continue; // 預算不足
+                    let newRemaining = r - pulls + (gotExtra ? 10 : 0);
+                    if (newRemaining > maxRemaining) newRemaining = maxRemaining; // 安全上限
+                    const newProb = prob * transProb;
+                    if (newProb < 1e-12) continue;
+                    nextDp[newRemaining * PITY_STATES + endPity] += newProb;
+                }
             }
         }
         dp = nextDp;
     }
 
+    // 所有剩餘狀態都算成功
     let successProb = 0;
-    for (const prob of dp.values()) successProb += prob;
+    for (let i = 0; i < dp.length; i++) {
+        successProb += dp[i];
+    }
     return Math.min(1.0, successProb);
 }
 
-// ---------- 单池精确转移（动态规划）----------
+// ---------- 單池精確轉移（動態規劃，優化上限）----------
 interface Transition {
-    pulls: number;      // 该池内消耗的总抽数（不含赠送10连）
+    pulls: number;      // 消耗的總抽數（不含贈送10連）
     endPity: number;
     prob: number;
-    gotExtra: boolean;  // 是否获得奖励（pulls >= 60）
+    gotExtra: boolean;  // pulls >= 60
 }
 
-const transCache = new Map<string, Transition[]>();
+const bannerTransCache = new Map<string, Transition[]>();
 
-function getBannerTransition(
-    initialPity: number,
-    target: number,
-    isLast: boolean
-): Transition[] {
+function getBannerTransition(initialPity: number, target: number, isLast: boolean): Transition[] {
     const cacheKey = `${initialPity}_${target}_${isLast}`;
-    if (transCache.has(cacheKey)) return transCache.get(cacheKey)!;
+    if (bannerTransCache.has(cacheKey)) return bannerTransCache.get(cacheKey)!;
 
     const results: Transition[] = [];
 
-    // 状态: (pity, copies, hasLimited)
-    const stateSize = 80 * (target + 1) * 2;
-    const idx = (p: number, c: number, h: number) =>
-        p * (target + 1) * 2 + c * 2 + h;
+    // 狀態: (pity, copies, hasLimited)
+    const maxCopies = target;
+    const stateSize = 80 * (maxCopies + 1) * 2;
+    const idx = (p: number, c: number, h: number) => p * (maxCopies + 1) * 2 + c * 2 + h;
 
     let curr = new Float64Array(stateSize);
     curr[idx(initialPity, 0, 0)] = 1.0;
 
-    let pulls = 0; // 只计算消耗资源的抽数，赠送10连不增加此值
-    const MAX_PULLS = 5000; // 足够覆盖高预算场景
+    let pulls = 0;
+    // 動態上限：合理估計每個目標最多200抽，再多機率極低
+    const maxPulls = Math.min(5000, target * 200 + 500);
 
     while (true) {
-        // 1. 处理30抽里程碑：赠送10连（不计入 pulls）
+        // 1. 30抽里程碑：贈送10連（不計入 pulls）
         if (pulls === 30) {
             let next = new Float64Array(stateSize);
             for (let p = 0; p < 80; p++) {
-                for (let c = 0; c <= target; c++) {
+                for (let c = 0; c <= maxCopies; c++) {
                     for (let h = 0; h < 2; h++) {
                         const prob = curr[idx(p, c, h)];
-                        if (prob === 0) continue;
-                        const tenPullDist = getTenPullDistribution(p, target);
-                        for (const outcome of tenPullDist) {
-                            const newPity = outcome.endPity;
-                            const newCopies = Math.min(target, c + outcome.limitedGained);
-                            const newHasLimited = h || outcome.limitedGained > 0 ? 1 : 0;
-                            next[idx(newPity, newCopies, newHasLimited)] += prob * outcome.prob;
+                        if (prob < 1e-12) continue;
+                        const tenPullResults = getTenPullDist(p);
+                        for (const res of tenPullResults) {
+                            const newPity = res.newPity;
+                            const newCopies = Math.min(maxCopies, c + res.limitedGain);
+                            const newHasLimited = h || (res.limitedGain > 0 ? 1 : 0);
+                            next[idx(newPity, newCopies, newHasLimited)] += prob * res.prob;
                         }
                     }
                 }
@@ -109,13 +130,13 @@ function getBannerTransition(
             curr = next;
         }
 
-        // 2. 检查终止条件
+        // 2. 檢查終止條件
         let active = false;
         for (let p = 0; p < 80; p++) {
-            for (let c = 0; c <= target; c++) {
+            for (let c = 0; c <= maxCopies; c++) {
                 for (let h = 0; h < 2; h++) {
                     const prob = curr[idx(p, c, h)];
-                    if (prob === 0) continue;
+                    if (prob < 1e-12) continue;
                     const reached = c >= target;
                     const shouldContinue = reached && pulls >= 9 && pulls < 60 && !isLast;
                     if (reached && !shouldContinue) {
@@ -125,28 +146,27 @@ function getBannerTransition(
                             prob: prob,
                             gotExtra: pulls >= 60
                         });
-                        curr[idx(p, c, h)] = 0; // 移除已收集的状态
+                        curr[idx(p, c, h)] = 0;
                     } else {
                         active = true;
                     }
                 }
             }
         }
-        if (!active || pulls >= MAX_PULLS) break;
+        if (!active || pulls >= maxPulls) break;
 
-        // 3. 进行一次正常抽卡（消耗资源）
+        // 3. 進行一次正常抽卡
         pulls++;
         let next = new Float64Array(stateSize);
         for (let p = 0; p < 80; p++) {
-            for (let c = 0; c <= target; c++) {
+            for (let c = 0; c <= maxCopies; c++) {
                 for (let h = 0; h < 2; h++) {
                     const prob = curr[idx(p, c, h)];
-                    if (prob === 0) continue;
+                    if (prob < 1e-12) continue;
 
                     let p6 = get6StarProb(p + 1);
                     let isLimitedGiven6 = 0.5;
 
-                    // 120抽保底
                     if (pulls === 120 && h === 0) {
                         p6 = 1.0;
                         isLimitedGiven6 = 1.0;
@@ -156,21 +176,21 @@ function getBannerTransition(
                     if (p6 < 1.0) {
                         const np = Math.min(79, p + 1);
                         let nc = c;
-                        if (pulls === 240) nc = Math.min(target, nc + 1);
+                        if (pulls === 240) nc = Math.min(maxCopies, nc + 1);
                         next[idx(np, nc, h)] += prob * (1 - p6);
                     }
                     // 出六星非限定
                     if (p6 > 0 && isLimitedGiven6 < 1.0) {
                         const np = 0;
                         let nc = c;
-                        if (pulls === 240) nc = Math.min(target, nc + 1);
+                        if (pulls === 240) nc = Math.min(maxCopies, nc + 1);
                         next[idx(np, nc, h)] += prob * p6 * (1 - isLimitedGiven6);
                     }
                     // 出限定六星
                     if (p6 > 0 && isLimitedGiven6 > 0) {
                         const np = 0;
-                        let nc = Math.min(target, c + 1);
-                        if (pulls === 240) nc = Math.min(target, nc + 1);
+                        let nc = Math.min(maxCopies, c + 1);
+                        if (pulls === 240) nc = Math.min(maxCopies, nc + 1);
                         next[idx(np, nc, 1)] += prob * p6 * isLimitedGiven6;
                     }
                 }
@@ -179,49 +199,51 @@ function getBannerTransition(
         curr = next;
     }
 
-    transCache.set(cacheKey, results);
+    bannerTransCache.set(cacheKey, results);
     return results;
 }
 
-/**
- * 10连抽的结果分布（不消耗资源，不影响 pulls 计数）
- * 返回: { endPity, limitedGained, prob }[]
- */
-function getTenPullDistribution(startPity: number, target: number): { endPity: number, limitedGained: number, prob: number }[] {
+// ---------- 預計算所有起始 pity 的 10 連分佈 ----------
+const tenPullCache = new Map<number, { newPity: number, limitedGain: number, prob: number }[]>();
+
+function getTenPullDist(startPity: number): { newPity: number, limitedGain: number, prob: number }[] {
+    if (tenPullCache.has(startPity)) return tenPullCache.get(startPity)!;
+
     let dist = new Map<string, number>();
     dist.set(`${startPity}|0`, 1.0);
 
     for (let step = 0; step < 10; step++) {
         const nextDist = new Map<string, number>();
         for (const [key, prob] of dist) {
-            const [pityStr, gainedStr] = key.split('|');
+            const [pityStr, gainStr] = key.split('|');
             let pity = parseInt(pityStr);
-            let gained = parseInt(gainedStr);
+            let gain = parseInt(gainStr);
             const p6 = get6StarProb(pity + 1);
 
             // 不出六星
             if (p6 < 1.0) {
-                const newKey = `${Math.min(79, pity + 1)}|${gained}`;
+                const newKey = `${Math.min(79, pity + 1)}|${gain}`;
                 nextDist.set(newKey, (nextDist.get(newKey) || 0) + prob * (1 - p6));
             }
-            // 出六星（非限定和限定）
+            // 出六星（各50%）
             if (p6 > 0) {
                 // 非限定
-                const newKeyNon = `0|${gained}`;
+                const newKeyNon = `0|${gain}`;
                 nextDist.set(newKeyNon, (nextDist.get(newKeyNon) || 0) + prob * p6 * 0.5);
                 // 限定
-                const newKeyLim = `0|${gained + 1}`;
+                const newKeyLim = `0|${gain + 1}`;
                 nextDist.set(newKeyLim, (nextDist.get(newKeyLim) || 0) + prob * p6 * 0.5);
             }
         }
         dist = nextDist;
     }
 
-    const results: { endPity: number, limitedGained: number, prob: number }[] = [];
+    const results: { newPity: number, limitedGain: number, prob: number }[] = [];
     for (const [key, prob] of dist) {
-        const [pity, gained] = key.split('|').map(Number);
-        results.push({ endPity: pity, limitedGained: gained, prob });
+        const [pity, gain] = key.split('|').map(Number);
+        results.push({ newPity: pity, limitedGain: gain, prob });
     }
+    tenPullCache.set(startPity, results);
     return results;
 }
 
