@@ -6,43 +6,31 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
     
     if (lastBannerIndex === -1) return 1.0;
 
-    // P is a 1D array representing P[cost][pity][extra_idx]
-    // cost: 0 to initialBudget
+    // P is a 1D array representing P[rem_pulls][pity]
+    // rem_pulls: 0 to initialBudget
     // pity: 0 to 79
-    // extra_idx: 0 (0 extra pulls) or 1 (10 extra pulls)
-    // Size: (initialBudget + 1) * 80 * 2
-    const P_SIZE = (initialBudget + 1) * 160;
+    // Size: (initialBudget + 1) * 80
+    const P_SIZE = (initialBudget + 1) * 80;
     let P = new Float64Array(P_SIZE);
     
     // Initial state
-    P[0 * 160 + initialPity * 2 + 0] = 1.0;
+    P[initialBudget * 80 + initialPity] = 1.0;
 
     for (let i = 0; i <= lastBannerIndex; i++) {
         let target = targets[i];
         let is_last_banner = (i === lastBannerIndex);
         
-        let new_P = new Float64Array(P_SIZE);
-        
         if (target === 0) {
-            for (let cost = 0; cost <= initialBudget; cost++) {
-                for (let pity = 0; pity < 80; pity++) {
-                    for (let extra_idx = 0; extra_idx < 2; extra_idx++) {
-                        let prob = P[cost * 160 + pity * 2 + extra_idx];
-                        if (prob > 0) {
-                            new_P[cost * 160 + pity * 2 + 0] += prob; // extra pulls are lost
-                        }
-                    }
-                }
-            }
-            P = new_P;
-            continue;
+            continue; // rem_pulls and pity remain unchanged
         }
+        
+        let new_P = new Float64Array(P_SIZE);
         
         for (let initial_pity = 0; initial_pity < 80; initial_pity++) {
             // Check if this initial_pity has any probability mass
             let has_prob = false;
-            for (let cost = 0; cost <= initialBudget; cost++) {
-                if (P[cost * 160 + initial_pity * 2 + 0] > 0 || P[cost * 160 + initial_pity * 2 + 1] > 0) {
+            for (let rem = 0; rem <= initialBudget; rem++) {
+                if (P[rem * 80 + initial_pity] > 0) {
                     has_prob = true;
                     break;
                 }
@@ -55,18 +43,15 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
                 let pulls = t.pullsInBanner;
                 let end_pity = t.end_pity;
                 let prob = t.prob;
-                let next_extra = pulls >= 60 ? 1 : 0;
+                let earned_pulls = pulls >= 60 ? 10 : 0;
                 
-                for (let extra_idx = 0; extra_idx < 2; extra_idx++) {
-                    let extra_pulls = extra_idx === 1 ? 10 : 0;
-                    let cost_inc = Math.max(0, pulls - extra_pulls);
-                    
-                    // Shift P by cost_inc
-                    let max_cost = initialBudget - cost_inc;
-                    for (let cost = 0; cost <= max_cost; cost++) {
-                        let p_val = P[cost * 160 + initial_pity * 2 + extra_idx];
-                        if (p_val > 0) {
-                            new_P[(cost + cost_inc) * 160 + end_pity * 2 + next_extra] += p_val * prob;
+                for (let rem = 0; rem <= initialBudget; rem++) {
+                    let p_val = P[rem * 80 + initial_pity];
+                    if (p_val > 0) {
+                        if (pulls <= rem) {
+                            let next_rem = rem - pulls + earned_pulls;
+                            // next_rem will never exceed initialBudget because pulls >= 60 when earned_pulls == 10
+                            new_P[next_rem * 80 + end_pity] += p_val * prob;
                         }
                     }
                 }
