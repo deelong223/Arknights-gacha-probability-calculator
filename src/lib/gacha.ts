@@ -6,15 +6,11 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
     
     if (lastBannerIndex === -1) return 1.0;
 
-    // P is a 1D array representing P[rem_pulls][pity]
-    // rem_pulls: 0 to initialBudget
-    // pity: 0 to 79
-    // Size: (initialBudget + 1) * 80
-    const P_SIZE = (initialBudget + 1) * 80;
-    let P = new Float64Array(P_SIZE);
+    // P maps state_key (rem_pulls * 80 + pity) to probability
+    let P = new Map<number, number>();
     
     // Initial state
-    P[initialBudget * 80 + initialPity] = 1.0;
+    P.set(initialBudget * 80 + initialPity, 1.0);
 
     for (let i = 0; i <= lastBannerIndex; i++) {
         let target = targets[i];
@@ -24,36 +20,28 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
             continue; // rem_pulls and pity remain unchanged
         }
         
-        let new_P = new Float64Array(P_SIZE);
+        let new_P = new Map<number, number>();
         
-        for (let initial_pity = 0; initial_pity < 80; initial_pity++) {
-            // Check if this initial_pity has any probability mass
-            let has_prob = false;
-            for (let rem = 0; rem <= initialBudget; rem++) {
-                if (P[rem * 80 + initial_pity] > 0) {
-                    has_prob = true;
-                    break;
-                }
-            }
-            if (!has_prob) continue;
+        for (let [state_key, p_val] of P.entries()) {
+            if (p_val <= 1e-7) continue;
+            
+            let rem = Math.floor(state_key / 80);
+            let initial_pity = state_key % 80;
             
             let trans = getBannerTransition(initial_pity, target, is_last_banner);
             
             for (let t of trans) {
                 let pulls = t.pullsInBanner;
-                let end_pity = t.end_pity;
-                let prob = t.prob;
-                let earned_pulls = pulls >= 60 ? 10 : 0;
-                
-                for (let rem = 0; rem <= initialBudget; rem++) {
-                    let p_val = P[rem * 80 + initial_pity];
-                    if (p_val > 0) {
-                        if (pulls <= rem) {
-                            let next_rem = rem - pulls + earned_pulls;
-                            // next_rem will never exceed initialBudget because pulls >= 60 when earned_pulls == 10
-                            new_P[next_rem * 80 + end_pity] += p_val * prob;
-                        }
-                    }
+                if (pulls <= rem) {
+                    let end_pity = t.end_pity;
+                    let prob = t.prob;
+                    let earned_pulls = pulls >= 60 ? 10 : 0;
+                    
+                    let next_rem = rem - pulls + earned_pulls;
+                    let next_key = next_rem * 80 + end_pity;
+                    
+                    let current_new_p = new_P.get(next_key) || 0;
+                    new_P.set(next_key, current_new_p + p_val * prob);
                 }
             }
         }
@@ -61,8 +49,8 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
     }
 
     let total_success = 0;
-    for (let i = 0; i < P.length; i++) {
-        total_success += P[i];
+    for (let p_val of P.values()) {
+        total_success += p_val;
     }
     return total_success;
 }
