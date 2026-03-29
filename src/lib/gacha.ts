@@ -47,7 +47,7 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
                 
                 for (let rem = 0; rem <= initialBudget; rem++) {
                     let p_val = P[rem * 80 + initial_pity];
-                    if (p_val > 1e-8) {
+                    if (p_val > 0) {
                         if (pulls <= rem) {
                             let next_rem = rem - pulls + earned_pulls;
                             // next_rem will never exceed initialBudget because pulls >= 60 when earned_pulls == 10
