@@ -1,4 +1,4 @@
-// gacha-dp-optimized.ts
+// gacha-dp-final.ts
 
 /**
  * 計算多池抽卡成功率（動態規劃 + 剪枝 + Float64Array）
@@ -44,8 +44,6 @@ export function calculateMultiBanner(
         }
 
         // 預先取得此池的所有轉移 (pityIn -> 多個結果)
-        // 我們需要對每個可能的入池 pity 進行轉移
-        // 為了加速，預先計算所有 pityIn 的轉移列表並快取
         const transitionsForPity = new Array(PITY_STATES);
         for (let pityIn = 0; pityIn < PITY_STATES; pityIn++) {
             transitionsForPity[pityIn] = getBannerTransition(pityIn, target, isLast);
@@ -60,9 +58,9 @@ export function calculateMultiBanner(
                 const transitions = transitionsForPity[p];
                 for (const trans of transitions) {
                     const { pulls, endPity, prob: transProb, gotExtra } = trans;
-                    if (r < pulls) continue; // 預算不足
+                    if (r < pulls) continue; // 資源不足
                     let newRemaining = r - pulls + (gotExtra ? 10 : 0);
-                    if (newRemaining > maxRemaining) newRemaining = maxRemaining; // 安全上限
+                    if (newRemaining > maxRemaining) newRemaining = maxRemaining;
                     const newProb = prob * transProb;
                     if (newProb < 1e-12) continue;
                     nextDp[newRemaining * PITY_STATES + endPity] += newProb;
@@ -80,7 +78,7 @@ export function calculateMultiBanner(
     return Math.min(1.0, successProb);
 }
 
-// ---------- 單池精確轉移（動態規劃，優化上限）----------
+// ---------- 單池精確轉移（動態規劃）----------
 interface Transition {
     pulls: number;      // 消耗的總抽數（不含贈送10連）
     endPity: number;
@@ -105,24 +103,24 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
     curr[idx(initialPity, 0, 0)] = 1.0;
 
     let pulls = 0;
-    // 動態上限：合理估計每個目標最多200抽，再多機率極低
+    // 動態上限：每個目標最多200抽
     const maxPulls = Math.min(5000, target * 200 + 500);
 
     while (true) {
-        // 1. 30抽里程碑：贈送10連（不計入 pulls）
+        // 1. 30抽里程碑：贈送10連（不消耗資源、不計入 pulls、不影響保底）
         if (pulls === 30) {
             let next = new Float64Array(stateSize);
+            const tenPullResults = getTenPullDist(); // 固定分佈，不依賴 pity
             for (let p = 0; p < 80; p++) {
                 for (let c = 0; c <= maxCopies; c++) {
                     for (let h = 0; h < 2; h++) {
                         const prob = curr[idx(p, c, h)];
                         if (prob < 1e-12) continue;
-                        const tenPullResults = getTenPullDist(p);
                         for (const res of tenPullResults) {
-                            const newPity = res.newPity;
                             const newCopies = Math.min(maxCopies, c + res.limitedGain);
                             const newHasLimited = h || (res.limitedGain > 0 ? 1 : 0);
-                            next[idx(newPity, newCopies, newHasLimited)] += prob * res.prob;
+                            // pity 保持不變
+                            next[idx(p, newCopies, newHasLimited)] += prob * res.prob;
                         }
                     }
                 }
@@ -155,7 +153,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
         }
         if (!active || pulls >= maxPulls) break;
 
-        // 3. 進行一次正常抽卡
+        // 3. 進行一次正常抽卡（消耗資源）
         pulls++;
         let next = new Float64Array(stateSize);
         for (let p = 0; p < 80; p++) {
@@ -167,6 +165,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
                     let p6 = get6StarProb(p + 1);
                     let isLimitedGiven6 = 0.5;
 
+                    // 120抽保底
                     if (pulls === 120 && h === 0) {
                         p6 = 1.0;
                         isLimitedGiven6 = 1.0;
@@ -203,48 +202,34 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
     return results;
 }
 
-// ---------- 預計算所有起始 pity 的 10 連分佈 ----------
-const tenPullCache = new Map<number, { newPity: number, limitedGain: number, prob: number }[]>();
+// ---------- 10連抽分佈（不影響保底，固定機率）---------
+const tenPullDistCache: { limitedGain: number, prob: number }[] | null = null;
 
-function getTenPullDist(startPity: number): { newPity: number, limitedGain: number, prob: number }[] {
-    if (tenPullCache.has(startPity)) return tenPullCache.get(startPity)!;
-
-    let dist = new Map<string, number>();
-    dist.set(`${startPity}|0`, 1.0);
-
-    for (let step = 0; step < 10; step++) {
-        const nextDist = new Map<string, number>();
-        for (const [key, prob] of dist) {
-            const [pityStr, gainStr] = key.split('|');
-            let pity = parseInt(pityStr);
-            let gain = parseInt(gainStr);
-            const p6 = get6StarProb(pity + 1);
-
-            // 不出六星
-            if (p6 < 1.0) {
-                const newKey = `${Math.min(79, pity + 1)}|${gain}`;
-                nextDist.set(newKey, (nextDist.get(newKey) || 0) + prob * (1 - p6));
-            }
-            // 出六星（各50%）
-            if (p6 > 0) {
-                // 非限定
-                const newKeyNon = `0|${gain}`;
-                nextDist.set(newKeyNon, (nextDist.get(newKeyNon) || 0) + prob * p6 * 0.5);
-                // 限定
-                const newKeyLim = `0|${gain + 1}`;
-                nextDist.set(newKeyLim, (nextDist.get(newKeyLim) || 0) + prob * p6 * 0.5);
-            }
+function getTenPullDist(): { limitedGain: number, prob: number }[] {
+    // 固定結果，只需計算一次
+    if (tenPullDistCache) return tenPullDistCache;
+    
+    const BASE_RATE = 0.008;
+    const LIMITED_RATE = 0.5;
+    const p = BASE_RATE * LIMITED_RATE; // 0.004
+    
+    const results: { limitedGain: number, prob: number }[] = [];
+    for (let k = 0; k <= 10; k++) {
+        const prob = binomial(10, p, k);
+        if (prob > 1e-12) {
+            results.push({ limitedGain: k, prob });
         }
-        dist = nextDist;
     }
-
-    const results: { newPity: number, limitedGain: number, prob: number }[] = [];
-    for (const [key, prob] of dist) {
-        const [pity, gain] = key.split('|').map(Number);
-        results.push({ newPity: pity, limitedGain: gain, prob });
-    }
-    tenPullCache.set(startPity, results);
     return results;
+}
+
+// 二項分佈輔助函數
+function binomial(n: number, p: number, k: number): number {
+    let coeff = 1;
+    for (let i = 1; i <= k; i++) {
+        coeff = coeff * (n - i + 1) / i;
+    }
+    return coeff * Math.pow(p, k) * Math.pow(1 - p, n - k);
 }
 
 function get6StarProb(pity: number): number {
