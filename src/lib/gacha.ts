@@ -47,7 +47,7 @@ export function calculateMultiBanner(targets: number[], initialPity: number, ini
                 
                 for (let rem = 0; rem <= initialBudget; rem++) {
                     let p_val = P[rem * 80 + initial_pity];
-                    if (p_val > 1e-10) {
+                    if (p_val > 1e-8) {
                         if (pulls <= rem) {
                             let next_rem = rem - pulls + earned_pulls;
                             // next_rem will never exceed initialBudget because pulls >= 60 when earned_pulls == 10
@@ -148,7 +148,7 @@ function getBannerTransition(initial_pity: number, target: number, is_last_banne
             }
         }
         
-        if (activeProb < 1e-8 || pullsInBanner >= 5000) break;
+        if (activeProb < 1e-12 || pullsInBanner >= 5000) break;
         
         // 3. Perform the next pull
         let next_pull = pullsInBanner + 1;
