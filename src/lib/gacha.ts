@@ -116,7 +116,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
                         if (prob === 0) continue;
                         for (let k = 0; k <= 10; k++) {
                             const probK = binomProbs[k];
-                            if (probK < 1e-12) continue;
+                            if (probK < 1e-16) continue;
                             const nextC = Math.min(target, c + k);
                             next[idx(p, nextC, h)] += prob * probK;
                         }
