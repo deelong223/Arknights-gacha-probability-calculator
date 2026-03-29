@@ -271,7 +271,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
                     const prob = curr[idx(p, c, h)];
                     if (prob === 0) continue;
                     const reached = c >= target;
-                    const shouldContinue = reached && pulls >= 9 && pulls < 60 && !isLast;
+                    const shouldContinue = reached && pulls >= 22 && pulls < 60 && !isLast;
                     if (reached && !shouldContinue) {
                         results.push({
                             pulls: pulls,
