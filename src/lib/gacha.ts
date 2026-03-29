@@ -79,12 +79,6 @@ export function calculateMultiBanner(
     return Math.min(1.0, successProb);
 }
 
-/**
- * 單卡池快速計算（不使用多池外部迴圈）
- * @param target 目標數量
- * @param initialPity 初始保底
- * @param budget 預算
- */
 function calculateSingleBanner(target: number, initialPity: number, budget: number): number {
     const maxCopies = target;
     const stateSize = 80 * (maxCopies + 1) * 2;
@@ -93,7 +87,6 @@ function calculateSingleBanner(target: number, initialPity: number, budget: numb
     let dp = new Float64Array(stateSize);
     dp[idx(initialPity, 0, 0)] = 1.0;
 
-    // 預計算30抽10連的二項分佈
     const binomProbs = new Float64Array(11);
     for (let k = 0; k <= 10; k++) {
         binomProbs[k] = binomial(10, 0.004, k);
@@ -104,24 +97,11 @@ function calculateSingleBanner(target: number, initialPity: number, budget: numb
     let success = 0;
 
     while (remainingBudget > 0) {
-        // 先將已達標狀態的機率轉移到 success
-        for (let p = 0; p < 80; p++) {
-            for (let c = target; c <= maxCopies; c++) {
-                for (let h = 0; h < 2; h++) {
-                    const prob = dp[idx(p, c, h)];
-                    if (prob > 0) {
-                        success += prob;
-                        dp[idx(p, c, h)] = 0;
-                    }
-                }
-            }
-        }
-
-        // 處理30抽里程碑（僅當 pulls === 30 時觸發一次）
+        // ===== 關鍵修正：30抽里程碑先處理（在檢查終止之前）=====
         if (pulls === 30) {
             let next = new Float64Array(stateSize);
             for (let p = 0; p < 80; p++) {
-                for (let c = 0; c < target; c++) { // 只處理未達標的
+                for (let c = 0; c < target; c++) {
                     for (let h = 0; h < 2; h++) {
                         const prob = dp[idx(p, c, h)];
                         if (prob === 0) continue;
@@ -134,7 +114,31 @@ function calculateSingleBanner(target: number, initialPity: number, budget: numb
                     }
                 }
             }
+            // 同時保留已達標狀態（c >= target）不變
+            for (let p = 0; p < 80; p++) {
+                for (let c = target; c <= maxCopies; c++) {
+                    for (let h = 0; h < 2; h++) {
+                        const prob = dp[idx(p, c, h)];
+                        if (prob > 0) {
+                            next[idx(p, c, h)] += prob;
+                        }
+                    }
+                }
+            }
             dp = next;
+        }
+
+        // 將已達標狀態移出到 success
+        for (let p = 0; p < 80; p++) {
+            for (let c = target; c <= maxCopies; c++) {
+                for (let h = 0; h < 2; h++) {
+                    const prob = dp[idx(p, c, h)];
+                    if (prob > 0) {
+                        success += prob;
+                        dp[idx(p, c, h)] = 0;
+                    }
+                }
+            }
         }
 
         // 檢查是否還有活躍狀態
@@ -144,13 +148,13 @@ function calculateSingleBanner(target: number, initialPity: number, budget: numb
         }
         if (!active) break;
 
-        // 消耗一次預算
+        // 消耗預算
         remainingBudget--;
         pulls++;
 
         let next = new Float64Array(stateSize);
         for (let p = 0; p < 80; p++) {
-            for (let c = 0; c < target; c++) { // 只處理未達標的
+            for (let c = 0; c < target; c++) {
                 for (let h = 0; h < 2; h++) {
                     const prob = dp[idx(p, c, h)];
                     if (prob === 0) continue;
@@ -176,14 +180,14 @@ function calculateSingleBanner(target: number, initialPity: number, budget: numb
                         if (pulls === 240) nc = Math.min(maxCopies, nc + 1);
                         next[idx(np, nc, h)] += prob * (1 - p6);
                     }
-                    // 出非限定六星
+                    // 出非限定
                     if (p6 > 0 && pLimGiven6 < 1.0) {
                         const np = 0;
                         let nc = c;
                         if (pulls === 240) nc = Math.min(maxCopies, nc + 1);
                         next[idx(np, nc, h)] += prob * p6 * (1 - pLimGiven6);
                     }
-                    // 出限定六星
+                    // 出限定
                     if (p6 > 0 && pLimGiven6 > 0) {
                         const np = 0;
                         let nc = Math.min(maxCopies, c + 1);
