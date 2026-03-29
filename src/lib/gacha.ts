@@ -115,7 +115,7 @@ function getBannerTransition(initialPity: number, target: number, isLast: boolea
                 for (let c = 0; c <= maxCopies; c++) {
                     for (let h = 0; h < 2; h++) {
                         const prob = curr[idx(p, c, h)];
-                        if (prob < 1e-12) continue;
+                        if (prob < 1e-16) continue;
                         for (const res of tenPullResults) {
                             const newCopies = Math.min(maxCopies, c + res.limitedGain);
                             const newHasLimited = h || (res.limitedGain > 0 ? 1 : 0);
