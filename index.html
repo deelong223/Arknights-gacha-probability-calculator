@@ -122,16 +122,6 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
         }
-        .form-group input[type="number"] {
-            -moz-appearance: textfield;
-            appearance: textfield;
-        }
-        .form-group input[type="number"]::-webkit-inner-spin-button,
-        .form-group input[type="number"]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-            display: none;
-        }
 
         .hint {
             font-size: 0.875rem;
@@ -162,16 +152,6 @@
             padding: 0.7rem 1rem;
             color: #f5f5f5;
             font-size: 0.95rem;
-        }
-        .banner-item input[type="number"] {
-            -moz-appearance: textfield;
-            appearance: textfield;
-        }
-        .banner-item input[type="number"]::-webkit-inner-spin-button,
-        .banner-item input[type="number"]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-            display: none;
         }
         .banner-item input:focus {
             outline: none;
@@ -295,27 +275,29 @@
 
                 <div class="form-group">
                     <label>Initial Pity (墊幾抽) (0~79)</label>
-                    <input type="text" id="initialPity" placeholder="0" value="0">
+                    <input type="text" id="initialPity" placeholder="0" value="">
+                    <div class="hint">空格 = 0</div>
                 </div>
 
                 <div class="form-group">
                     <label>Budget (預算) (0~5000)</label>
-                    <input type="text" id="budget" placeholder="0" value="0">
+                    <input type="text" id="budget" placeholder="0" value="">
+                    <div class="hint">空格 = 0</div>
                 </div>
 
                 <div class="threshold-row">
                     <div class="form-group">
-                        <label>strategy(抽卡策略) (0~59)</label>
-                        <input type="text" id="threshold" placeholder="47" value="47">
-                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽(預設:47)</div>
-                        <div class="threshold-hint">Continue pulling to 60 pulls after reaching the target within the threshold(default: 47)</div>
+                        <label>Strategy (抽卡策略) (0~59)</label>
+                        <input type="text" id="threshold" placeholder="47" value="">
+                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽 (空格 = 47)</div>
+                        <div class="threshold-hint">Continue pulling to 60 pulls after reaching the target within the threshold (default: 47)</div>
                     </div>
                 </div>
 
                 <div class="divider"></div>
 
                 <div class="card-title">Banner Targets (目標數量)</div>
-                <div class="hint" style="margin-bottom: 1rem;">valid number (輸入範圍): 0~6</div>
+                <div class="hint" style="margin-bottom: 1rem;">valid number (輸入範圍): 0~6 | 空格 = 0</div>
 
                 <div id="bannerContainer" class="banners-list"></div>
 
@@ -336,7 +318,7 @@
         const BANNER_COUNT = 5;
         let banners = [0, 0, 0, 0, 0];
 
-        // 輸入上限常量
+        // 輸入範圍常量
         const PITY_MIN = 0;
         const PITY_MAX = 79;
         const BUDGET_MIN = 0;
@@ -345,6 +327,12 @@
         const TARGET_MAX = 6;
         const THRESHOLD_MIN = 0;
         const THRESHOLD_MAX = 59;
+        
+        // 預設值常量
+        const DEFAULT_PITY = 0;
+        const DEFAULT_BUDGET = 0;
+        const DEFAULT_THRESHOLD = 47;
+        const DEFAULT_TARGET = 0;
 
         // WASM 函數
         let calculateFunc = null;
@@ -363,30 +351,40 @@
             return Math.max(min, Math.min(max, value));
         }
 
-        function getValidNumber(input, min, max) {
+        // 通用獲取數字函數：空格返回預設值
+        function getNumberWithDefault(input, min, max, defaultValue) {
             let val = input.value.trim();
-            if (val === "") return 0;
+            if (val === "") return defaultValue;
             let num = parseInt(val);
-            if (isNaN(num)) return 0;
+            if (isNaN(num)) return defaultValue;
             return clamp(num, min, max);
         }
 
+        // 設置輸入框值：如果值等於預設值且允許顯示空格，則設為空字符串
+        function setInputValueWithDefault(input, value, defaultValue) {
+            if (value === defaultValue) {
+                input.value = "";
+            } else {
+                input.value = value;
+            }
+        }
+
         function handlePityInput() {
-            let val = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
-            initialPityInput.value = val === 0 ? "" : val;
+            let val = getNumberWithDefault(initialPityInput, PITY_MIN, PITY_MAX, DEFAULT_PITY);
+            setInputValueWithDefault(initialPityInput, val, DEFAULT_PITY);
         }
 
         function handleBudgetInput() {
-            let val = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
-            budgetInput.value = val === 0 ? "" : val;
+            let val = getNumberWithDefault(budgetInput, BUDGET_MIN, BUDGET_MAX, DEFAULT_BUDGET);
+            setInputValueWithDefault(budgetInput, val, DEFAULT_BUDGET);
         }
 
         function handleThresholdInput() {
-            let val = getValidNumber(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX);
-            thresholdInput.value = val === 0 ? "" : val;
+            let val = getNumberWithDefault(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX, DEFAULT_THRESHOLD);
+            setInputValueWithDefault(thresholdInput, val, DEFAULT_THRESHOLD);
             if (setThresholdFunc) {
                 setThresholdFunc(val);
-                console.log(`閾值已設為 ${val}`);
+                console.log(`Threshold set to ${val}`);
             }
         }
 
@@ -394,13 +392,13 @@
             let val = input.value.trim();
             let num;
             if (val === "") {
-                num = 0;
+                num = DEFAULT_TARGET;
             } else {
                 num = parseInt(val);
-                if (isNaN(num)) num = 0;
+                if (isNaN(num)) num = DEFAULT_TARGET;
                 num = clamp(num, TARGET_MIN, TARGET_MAX);
             }
-            input.value = num === 0 ? "" : num;
+            setInputValueWithDefault(input, num, DEFAULT_TARGET);
             if (idx >= 0 && idx < banners.length) {
                 banners[idx] = num;
             }
@@ -409,12 +407,12 @@
         function renderBanners() {
             bannerContainer.innerHTML = '';
             for (let i = 0; i < BANNER_COUNT; i++) {
-                const target = banners[i] !== undefined ? banners[i] : 0;
+                const target = banners[i] !== undefined ? banners[i] : DEFAULT_TARGET;
                 const div = document.createElement('div');
                 div.className = 'banner-item';
                 div.innerHTML = `
                     <span class="banner-label">Banner ${i + 1}</span>
-                    <input type="text" value="${target === 0 ? "" : target}" placeholder="0" data-index="${i}" class="banner-input">
+                    <input type="text" value="${target === DEFAULT_TARGET ? "" : target}" placeholder="0" data-index="${i}" class="banner-input">
                 `;
                 bannerContainer.appendChild(div);
             }
@@ -425,15 +423,16 @@
                     let val = this.value.trim();
                     let num;
                     if (val === "") {
-                        num = 0;
+                        num = DEFAULT_TARGET;
+                        this.value = "";
                     } else {
                         num = parseInt(val);
                         if (isNaN(num)) {
                             this.value = "";
-                            num = 0;
+                            num = DEFAULT_TARGET;
                         } else {
                             num = clamp(num, TARGET_MIN, TARGET_MAX);
-                            this.value = num === 0 ? "" : num;
+                            this.value = num === DEFAULT_TARGET ? "" : num;
                         }
                     }
                     if (idx >= 0 && idx < banners.length) {
@@ -448,7 +447,7 @@
         }
 
         function updateResult(prob) {
-            const percent = (Math.min(1, prob) * 100).toFixed(3);
+            const percent = (Math.min(1, prob) * 100).toFixed(4);
             resultDisplay.innerHTML = `<div class="result-value">${percent}%</div>`;
             resultSub.innerHTML = `You have ${percent}% chance to get your target.`;
         }
@@ -476,8 +475,8 @@
                 return;
             }
 
-            const initialPity = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
-            const initialBudget = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
+            const initialPity = getNumberWithDefault(initialPityInput, PITY_MIN, PITY_MAX, DEFAULT_PITY);
+            const initialBudget = getNumberWithDefault(budgetInput, BUDGET_MIN, BUDGET_MAX, DEFAULT_BUDGET);
             const targets = banners.map(b => b);
 
             showLoading();
@@ -510,7 +509,7 @@
                 setThresholdFunc = Module.cwrap('setThreshold', null, ['number']);
 
                 // 初始化閾值
-                let threshold = getValidNumber(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX);
+                let threshold = getNumberWithDefault(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX, DEFAULT_THRESHOLD);
                 setThresholdFunc(threshold);
                 console.log(`✅ WASM 加載成功，閾值設為 ${threshold}`);
 
@@ -537,4 +536,3 @@
     <script src="gacha.js"></script>
 </body>
 </html>
-strategy都改成可輸入0進去，也可以是空格
