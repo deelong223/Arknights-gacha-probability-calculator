@@ -7,7 +7,10 @@
 
 using namespace std;
 
-const double EPS = 1e-12;  // 機率閥值
+const double EPS = 1e-12;
+
+// 可配置的閾值：在多少抽內達成目標就繼續抽滿 60 抽
+static int CONTINUE_THRESHOLD = 47;
 
 // 二項式係數計算
 double binomial(int n, double p, int k) {
@@ -25,132 +28,11 @@ struct Transition {
     bool gotExtra;
 };
 
+// 緩存聲明
 static map<string, vector<Transition>> transCache;
 
-vector<Transition> getBannerTransition(int initialPity, int target, bool isLast) {
-    string key = to_string(initialPity) + "_" + to_string(target) + "_" + (isLast ? "1" : "0");
-    auto it = transCache.find(key);
-    if (it != transCache.end()) return it->second;
-
-    const int PITY_MAX = 80;
-    const int COPIES = target;
-    const int STATE_SIZE = PITY_MAX * (COPIES + 1) * 2;
-
-    auto idx = [COPIES](int p, int c, int h) -> int {
-        return p * (COPIES + 1) * 2 + c * 2 + h;
-        };
-
-    vector<double> curr(STATE_SIZE, 0.0);
-    curr[idx(initialPity, 0, 0)] = 1.0;
-
-    vector<double> binomProbs(11);
-    for (int k = 0; k <= 10; ++k) binomProbs[k] = binomial(10, 0.004, k);
-
-    int pulls = 0;
-    const int MAX_PULLS = 5000;
-
-    while (true) {
-        // 30抽里程碑
-        if (pulls == 30) {
-            vector<double> next(STATE_SIZE, 0.0);
-            for (int p = 0; p < PITY_MAX; ++p) {
-                for (int c = 0; c <= COPIES; ++c) {
-                    for (int h = 0; h < 2; ++h) {
-                        double prob = curr[idx(p, c, h)];
-                        if (prob == 0.0) continue;
-                        for (int k = 0; k <= 10; ++k) {
-                            double pk = binomProbs[k];
-                            if (pk < EPS) continue;
-                            int nc = min(COPIES, c + k);
-                            next[idx(p, nc, h)] += prob * pk;
-                        }
-                    }
-                }
-            }
-            curr.swap(next);
-        }
-
-        // 收集結果並檢查活躍狀態
-        bool active = false;
-        for (int p = 0; p < PITY_MAX; ++p) {
-            for (int c = 0; c <= COPIES; ++c) {
-                for (int h = 0; h < 2; ++h) {
-                    double prob = curr[idx(p, c, h)];
-                    if (prob == 0.0) continue;
-                    bool reached = c >= COPIES;
-                    bool shouldContinue = reached && pulls >= 47 && pulls < 60 && !isLast;
-                    if (reached && !shouldContinue) {
-                        Transition t;
-                        t.pulls = pulls;
-                        t.endPity = p;
-                        t.prob = prob;
-                        t.gotExtra = pulls >= 60;
-                        transCache[key].push_back(t);
-                        curr[idx(p, c, h)] = 0.0;
-                    }
-                    else {
-                        active = true;
-                    }
-                }
-            }
-        }
-        if (!active || pulls >= MAX_PULLS) break;
-
-        // 一次抽卡
-        ++pulls;
-        vector<double> next(STATE_SIZE, 0.0);
-        for (int p = 0; p < PITY_MAX; ++p) {
-            for (int c = 0; c <= COPIES; ++c) {
-                for (int h = 0; h < 2; ++h) {
-                    double prob = curr[idx(p, c, h)];
-                    if (prob == 0.0) continue;
-
-                    double p6 = 0.008;
-                    double pLimGiven6 = 0.5;
-
-                    if (pulls == 120 && h == 0) {
-                        p6 = 1.0;
-                        pLimGiven6 = 1.0;
-                    }
-                    else {
-                        int n = p + 1;
-                        if (n >= 66 && n <= 79) {
-                            p6 = 0.008 + 0.05 * (n - 65);
-                        }
-                        else if (n >= 80) {
-                            p6 = 1.0;
-                        }
-                    }
-
-                    // 不出六星
-                    if (p6 < 1.0) {
-                        int np = min(79, p + 1);
-                        int nc = c;
-                        if (pulls == 240) nc = min(COPIES, nc + 1);
-                        next[idx(np, nc, h)] += prob * (1 - p6);
-                    }
-                    // 出非限定六星
-                    if (p6 > 0.0 && pLimGiven6 < 1.0) {
-                        int np = 0;
-                        int nc = c;
-                        if (pulls == 240) nc = min(COPIES, nc + 1);
-                        next[idx(np, nc, h)] += prob * p6 * (1 - pLimGiven6);
-                    }
-                    // 出限定六星
-                    if (p6 > 0.0 && pLimGiven6 > 0.0) {
-                        int np = 0;
-                        int nc = min(COPIES, c + 1);
-                        if (pulls == 240) nc = min(COPIES, nc + 1);
-                        next[idx(np, nc, 1)] += prob * p6 * pLimGiven6;
-                    }
-                }
-            }
-        }
-        curr.swap(next);
-    }
-
-    return transCache[key];
-}
+// 前向聲明
+vector<Transition> getBannerTransition(int initialPity, int target, bool isLast);
 
 double calculateSingleBanner(int target, int initialPity, int budget) {
     const int PITY_MAX = 80;
@@ -293,6 +175,135 @@ double calculateSingleBanner(int target, int initialPity, int budget) {
     return min(1.0, success);
 }
 
+vector<Transition> getBannerTransition(int initialPity, int target, bool isLast) {
+    // 將閾值加入緩存 key
+    string key = to_string(initialPity) + "_" + to_string(target) + "_" + (isLast ? "1" : "0") + "_" + to_string(CONTINUE_THRESHOLD);
+    auto it = transCache.find(key);
+    if (it != transCache.end()) return it->second;
+
+    const int PITY_MAX = 80;
+    const int COPIES = target;
+    const int STATE_SIZE = PITY_MAX * (COPIES + 1) * 2;
+
+    auto idx = [COPIES](int p, int c, int h) -> int {
+        return p * (COPIES + 1) * 2 + c * 2 + h;
+        };
+
+    vector<double> curr(STATE_SIZE, 0.0);
+    curr[idx(initialPity, 0, 0)] = 1.0;
+
+    vector<double> binomProbs(11);
+    for (int k = 0; k <= 10; ++k) binomProbs[k] = binomial(10, 0.004, k);
+
+    vector<Transition> results;
+    int pulls = 0;
+    const int MAX_PULLS = 5000;
+
+    while (true) {
+        // 30抽里程碑
+        if (pulls == 30) {
+            vector<double> next(STATE_SIZE, 0.0);
+            for (int p = 0; p < PITY_MAX; ++p) {
+                for (int c = 0; c <= COPIES; ++c) {
+                    for (int h = 0; h < 2; ++h) {
+                        double prob = curr[idx(p, c, h)];
+                        if (prob == 0.0) continue;
+                        for (int k = 0; k <= 10; ++k) {
+                            double pk = binomProbs[k];
+                            if (pk < EPS) continue;
+                            int nc = min(COPIES, c + k);
+                            next[idx(p, nc, h)] += prob * pk;
+                        }
+                    }
+                }
+            }
+            curr.swap(next);
+        }
+
+        // 收集結果並檢查活躍狀態
+        bool active = false;
+        for (int p = 0; p < PITY_MAX; ++p) {
+            for (int c = 0; c <= COPIES; ++c) {
+                for (int h = 0; h < 2; ++h) {
+                    double prob = curr[idx(p, c, h)];
+                    if (prob == 0.0) continue;
+                    bool reached = c >= COPIES;
+                    // 關鍵：pulls >= CONTINUE_THRESHOLD 時繼續抽
+                    bool shouldContinue = reached && pulls >= CONTINUE_THRESHOLD && pulls < 60 && !isLast;
+                    if (reached && !shouldContinue) {
+                        Transition t;
+                        t.pulls = pulls;
+                        t.endPity = p;
+                        t.prob = prob;
+                        t.gotExtra = pulls >= 60;
+                        results.push_back(t);
+                        curr[idx(p, c, h)] = 0.0;
+                    }
+                    else {
+                        active = true;
+                    }
+                }
+            }
+        }
+        if (!active || pulls >= MAX_PULLS) break;
+
+        // 一次抽卡
+        ++pulls;
+        vector<double> next(STATE_SIZE, 0.0);
+        for (int p = 0; p < PITY_MAX; ++p) {
+            for (int c = 0; c <= COPIES; ++c) {
+                for (int h = 0; h < 2; ++h) {
+                    double prob = curr[idx(p, c, h)];
+                    if (prob == 0.0) continue;
+
+                    double p6 = 0.008;
+                    double pLimGiven6 = 0.5;
+
+                    if (pulls == 120 && h == 0) {
+                        p6 = 1.0;
+                        pLimGiven6 = 1.0;
+                    }
+                    else {
+                        int n = p + 1;
+                        if (n >= 66 && n <= 79) {
+                            p6 = 0.008 + 0.05 * (n - 65);
+                        }
+                        else if (n >= 80) {
+                            p6 = 1.0;
+                        }
+                    }
+
+                    // 不出六星
+                    if (p6 < 1.0) {
+                        int np = min(79, p + 1);
+                        int nc = c;
+                        if (pulls == 240) nc = min(COPIES, nc + 1);
+                        next[idx(np, nc, h)] += prob * (1 - p6);
+                    }
+                    // 出非限定六星
+                    if (p6 > 0.0 && pLimGiven6 < 1.0) {
+                        int np = 0;
+                        int nc = c;
+                        if (pulls == 240) nc = min(COPIES, nc + 1);
+                        next[idx(np, nc, h)] += prob * p6 * (1 - pLimGiven6);
+                    }
+                    // 出限定六星
+                    if (p6 > 0.0 && pLimGiven6 > 0.0) {
+                        int np = 0;
+                        int nc = min(COPIES, c + 1);
+                        if (pulls == 240) nc = min(COPIES, nc + 1);
+                        next[idx(np, nc, 1)] += prob * p6 * pLimGiven6;
+                    }
+                }
+            }
+        }
+        curr.swap(next);
+    }
+
+    transCache[key] = results;
+    return results;
+}
+
 double calculateMultiBanner(const vector<int>& targets, int initialPity, int initialBudget) {
     // 偵測單卡池
     vector<int> nonZeroIndices;
@@ -386,6 +397,13 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         double calculateSingle(int target, int initialPity, int budget) {
         return calculateSingleBanner(target, initialPity, budget);
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+        void setThreshold(int threshold) {
+        CONTINUE_THRESHOLD = threshold;
+        // 清除緩存
+        transCache.clear();
     }
 
 }
