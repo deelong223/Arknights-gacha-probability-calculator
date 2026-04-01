@@ -122,15 +122,6 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
         }
-        /* placeholder 樣式與普通文字同色 */
-        .form-group input::placeholder {
-            color: #f5f5f5;
-            opacity: 1;
-        }
-        .banner-item input::placeholder {
-            color: #f5f5f5;
-            opacity: 1;
-        }
 
         .hint {
             font-size: 0.875rem;
@@ -284,19 +275,19 @@
 
                 <div class="form-group">
                     <label>Initial Pity (墊幾抽) (0~79)</label>
-                    <input type="text" id="initialPity" placeholder="0" value="">
+                    <input type="text" id="initialPity" value="0">
                 </div>
 
                 <div class="form-group">
                     <label>Budget (預算) (0~5000)</label>
-                    <input type="text" id="budget" placeholder="0" value="">
+                    <input type="text" id="budget" value="0">
                 </div>
 
                 <div class="threshold-row">
                     <div class="form-group">
                         <label>Strategy (抽卡策略) (0~59)</label>
-                        <input type="text" id="threshold" placeholder="47" value="">
-                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽 (空格 = 47)</div>
+                        <input type="text" id="threshold" value="47">
+                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽 (預設:47)</div>
                         <div class="threshold-hint">Continue pulling to 60 pulls after reaching the target within the threshold (default: 47)</div>
                     </div>
                 </div>
@@ -304,7 +295,7 @@
                 <div class="divider"></div>
 
                 <div class="card-title">Banner Targets (目標數量)</div>
-                <div class="hint" style="margin-bottom: 1rem;">valid number (輸入範圍): 0~6 | 空格 = 0</div>
+                <div class="hint" style="margin-bottom: 1rem;">valid number (輸入範圍): 0~6</div>
 
                 <div id="bannerContainer" class="banners-list"></div>
 
@@ -358,18 +349,18 @@
             return Math.max(min, Math.min(max, value));
         }
 
-        // 通用獲取數字函數：空格返回預設值
+        // 通用獲取數字函數：空格返回 0
         function getNumberWithDefault(input, min, max, defaultValue) {
             let val = input.value.trim();
-            if (val === "") return defaultValue;
+            if (val === "") return 0;
             let num = parseInt(val);
-            if (isNaN(num)) return defaultValue;
+            if (isNaN(num)) return 0;
             return clamp(num, min, max);
         }
 
-        // 設置輸入框值：如果值等於預設值且允許顯示空格，則設為空字符串
-        function setInputValueWithDefault(input, value, defaultValue) {
-            if (value === defaultValue) {
+        // 設置輸入框值：如果值為 0 則清空，否則顯示數字
+        function setInputValue(input, value) {
+            if (value === 0) {
                 input.value = "";
             } else {
                 input.value = value;
@@ -378,17 +369,17 @@
 
         function handlePityInput() {
             let val = getNumberWithDefault(initialPityInput, PITY_MIN, PITY_MAX, DEFAULT_PITY);
-            setInputValueWithDefault(initialPityInput, val, DEFAULT_PITY);
+            setInputValue(initialPityInput, val);
         }
 
         function handleBudgetInput() {
             let val = getNumberWithDefault(budgetInput, BUDGET_MIN, BUDGET_MAX, DEFAULT_BUDGET);
-            setInputValueWithDefault(budgetInput, val, DEFAULT_BUDGET);
+            setInputValue(budgetInput, val);
         }
 
         function handleThresholdInput() {
             let val = getNumberWithDefault(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX, DEFAULT_THRESHOLD);
-            setInputValueWithDefault(thresholdInput, val, DEFAULT_THRESHOLD);
+            setInputValue(thresholdInput, val);
             if (setThresholdFunc) {
                 setThresholdFunc(val);
                 console.log(`Threshold set to ${val}`);
@@ -399,13 +390,13 @@
             let val = input.value.trim();
             let num;
             if (val === "") {
-                num = DEFAULT_TARGET;
+                num = 0;
             } else {
                 num = parseInt(val);
-                if (isNaN(num)) num = DEFAULT_TARGET;
+                if (isNaN(num)) num = 0;
                 num = clamp(num, TARGET_MIN, TARGET_MAX);
             }
-            setInputValueWithDefault(input, num, DEFAULT_TARGET);
+            setInputValue(input, num);
             if (idx >= 0 && idx < banners.length) {
                 banners[idx] = num;
             }
@@ -414,12 +405,12 @@
         function renderBanners() {
             bannerContainer.innerHTML = '';
             for (let i = 0; i < BANNER_COUNT; i++) {
-                const target = banners[i] !== undefined ? banners[i] : DEFAULT_TARGET;
+                const target = banners[i] !== undefined ? banners[i] : 0;
                 const div = document.createElement('div');
                 div.className = 'banner-item';
                 div.innerHTML = `
                     <span class="banner-label">Banner ${i + 1}</span>
-                    <input type="text" value="${target === DEFAULT_TARGET ? "" : target}" placeholder="0" data-index="${i}" class="banner-input">
+                    <input type="text" value="${target === 0 ? "" : target}" data-index="${i}" class="banner-input">
                 `;
                 bannerContainer.appendChild(div);
             }
@@ -430,16 +421,16 @@
                     let val = this.value.trim();
                     let num;
                     if (val === "") {
-                        num = DEFAULT_TARGET;
+                        num = 0;
                         this.value = "";
                     } else {
                         num = parseInt(val);
                         if (isNaN(num)) {
                             this.value = "";
-                            num = DEFAULT_TARGET;
+                            num = 0;
                         } else {
                             num = clamp(num, TARGET_MIN, TARGET_MAX);
-                            this.value = num === DEFAULT_TARGET ? "" : num;
+                            this.value = num === 0 ? "" : num;
                         }
                     }
                     if (idx >= 0 && idx < banners.length) {
