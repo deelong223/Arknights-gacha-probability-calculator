@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -348,14 +348,14 @@
                     <label>                        
                         Initial Pity (墊幾抽) (0~79)
                     </label>
-                    <input type="number" id="initialPity" min="0" max="79" value="0">               
+                    <input type="text" id="initialPity" placeholder="0" value="0">               
                 </div>
 
                 <div class="form-group">
                     <label>                
                         Budget (預算) (0~5000)
                     </label>
-                    <input type="number" id="budget" min="0" max="5000" value="300">
+                    <input type="text" id="budget" placeholder="0" value="0">
                 </div>
 
                 <div class="divider"></div>
@@ -384,7 +384,7 @@
     <script>
         // 固定 5 個卡池
         const BANNER_COUNT = 5;
-        let banners = [1, 0, 0, 0, 0];  // 初始化 5 個卡池
+        let banners = [0, 0, 0, 0, 0];  // 預設全為 0
 
         // 輸入上限常量
         const PITY_MIN = 0;
@@ -411,30 +411,41 @@
             return Math.max(min, Math.min(max, value));
         }
 
-        // 處理初始保底輸入（即時修正）
+        // 獲取有效的數字值（空格視為 0）
+        function getValidNumber(input, min, max) {
+            let val = input.value.trim();
+            if (val === "") return 0;
+            let num = parseInt(val);
+            if (isNaN(num)) return 0;
+            return clamp(num, min, max);
+        }
+
+        // 處理初始保底輸入
         function handlePityInput() {
-            let val = parseInt(initialPityInput.value);
-            if (isNaN(val)) val = PITY_MIN;
-            val = clamp(val, PITY_MIN, PITY_MAX);
-            initialPityInput.value = val;
+            let val = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
+            initialPityInput.value = val === 0 ? "" : val;
         }
 
-        // 處理預算輸入（即時修正）
+        // 處理預算輸入
         function handleBudgetInput() {
-            let val = parseInt(budgetInput.value);
-            if (isNaN(val)) val = BUDGET_MIN;
-            val = clamp(val, BUDGET_MIN, BUDGET_MAX);
-            budgetInput.value = val;
+            let val = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
+            budgetInput.value = val === 0 ? "" : val;
         }
 
-        // 處理目標數量輸入（即時修正）
+        // 處理目標數量輸入
         function handleTargetInput(input, idx) {
-            let val = parseInt(input.value);
-            if (isNaN(val)) val = TARGET_MIN;
-            val = clamp(val, TARGET_MIN, TARGET_MAX);
-            input.value = val;
+            let val = input.value.trim();
+            let num;
+            if (val === "") {
+                num = 0;
+            } else {
+                num = parseInt(val);
+                if (isNaN(num)) num = 0;
+                num = clamp(num, TARGET_MIN, TARGET_MAX);
+            }
+            input.value = num === 0 ? "" : num;
             if (idx >= 0 && idx < banners.length) {
-                banners[idx] = val;
+                banners[idx] = num;
             }
         }
 
@@ -447,24 +458,31 @@
                 div.className = 'banner-item';
                 div.innerHTML = `
                     <span class="banner-label">Banner ${i + 1}</span>
-                    <input type="number" value="${target}" min="${TARGET_MIN}" max="${TARGET_MAX}" data-index="${i}" class="banner-input">
+                    <input type="text" value="${target === 0 ? "" : target}" placeholder="0" data-index="${i}" class="banner-input">
                 `;
                 bannerContainer.appendChild(div);
             }
 
-            // 綁定輸入事件（即時修正）
+            // 綁定輸入事件
             document.querySelectorAll('.banner-input').forEach(input => {
                 input.addEventListener('input', function() {
                     const idx = parseInt(this.dataset.index);
-                    let val = parseInt(this.value);
-                    if (!isNaN(val)) {
-                        val = clamp(val, TARGET_MIN, TARGET_MAX);
-                        if (val !== parseInt(this.value)) {
-                            this.value = val;
+                    let val = this.value.trim();
+                    let num;
+                    if (val === "") {
+                        num = 0;
+                    } else {
+                        num = parseInt(val);
+                        if (isNaN(num)) {
+                            this.value = "";
+                            num = 0;
+                        } else {
+                            num = clamp(num, TARGET_MIN, TARGET_MAX);
+                            this.value = num === 0 ? "" : num;
                         }
-                        if (idx >= 0 && idx < banners.length) {
-                            banners[idx] = val;
-                        }
+                    }
+                    if (idx >= 0 && idx < banners.length) {
+                        banners[idx] = num;
                     }
                 });
                 input.addEventListener('blur', function() {
@@ -505,12 +523,9 @@
                 return;
             }
 
-            // 計算前先確保所有輸入都在範圍內
-            handlePityInput();
-            handleBudgetInput();
-            
-            const initialPity = parseInt(initialPityInput.value) || 0;
-            const initialBudget = parseInt(budgetInput.value) || 0;
+            // 獲取輸入值（空格視為 0）
+            const initialPity = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
+            const initialBudget = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
             const targets = banners.map(b => b);
 
             showLoading();
@@ -551,10 +566,10 @@
             }
         }
 
-        // 綁定事件（即時修正）
+        // 綁定事件
         calculateBtn.addEventListener('click', calculateMulti);
         
-        // 使用 input 事件實現即時修正
+        // 綁定輸入事件
         initialPityInput.addEventListener('input', handlePityInput);
         initialPityInput.addEventListener('blur', handlePityInput);
         budgetInput.addEventListener('input', handleBudgetInput);
