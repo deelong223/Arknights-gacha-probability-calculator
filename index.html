@@ -295,20 +295,20 @@
 
                 <div class="form-group">
                     <label>Initial Pity (墊幾抽) (0~79)</label>
-                    <input type="text" id="initialPity" placeholder="0" value="0">
+                    <input type="number" id="initialPity" min="0" max="79" value="0" step="1">
                 </div>
 
                 <div class="form-group">
                     <label>Budget (預算) (0~5000)</label>
-                    <input type="text" id="budget" placeholder="0" value="0">
+                    <input type="number" id="budget" min="0" max="5000" value="0" step="1">
                 </div>
 
                 <div class="threshold-row">
                     <div class="form-group">
-                        <label>strategy(抽卡策略) (0~59)</label>
-                        <input type="text" id="threshold" placeholder="47" value="47">
-                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽(預設:47)</div>
-                        <div class="threshold-hint">Continue pulling to 60 pulls after reaching the target within the threshold(default: 47)</div>
+                        <label>Strategy (抽卡策略) (0~59)</label>
+                        <input type="number" id="threshold" min="0" max="59" value="47" step="1">
+                        <div class="threshold-hint">在哪抽後達成目標選擇繼續抽滿60抽 (預設:47)</div>
+                        <div class="threshold-hint">Continue pulling to 60 pulls after reaching the target within the threshold (default: 47)</div>
                     </div>
                 </div>
 
@@ -372,18 +372,24 @@
         }
 
         function handlePityInput() {
-            let val = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
-            initialPityInput.value = val === 0 ? "" : val;
+            let val = parseInt(initialPityInput.value);
+            if (isNaN(val)) val = 0;
+            val = clamp(val, PITY_MIN, PITY_MAX);
+            initialPityInput.value = val;
         }
 
         function handleBudgetInput() {
-            let val = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
-            budgetInput.value = val === 0 ? "" : val;
+            let val = parseInt(budgetInput.value);
+            if (isNaN(val)) val = 0;
+            val = clamp(val, BUDGET_MIN, BUDGET_MAX);
+            budgetInput.value = val;
         }
 
         function handleThresholdInput() {
-            let val = getValidNumber(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX);
-            thresholdInput.value = val === 0 ? "" : val;
+            let val = parseInt(thresholdInput.value);
+            if (isNaN(val)) val = 0;
+            val = clamp(val, THRESHOLD_MIN, THRESHOLD_MAX);
+            thresholdInput.value = val;
             if (setThresholdFunc) {
                 setThresholdFunc(val);
                 console.log(`閾值已設為 ${val}`);
@@ -391,18 +397,12 @@
         }
 
         function handleTargetInput(input, idx) {
-            let val = input.value.trim();
-            let num;
-            if (val === "") {
-                num = 0;
-            } else {
-                num = parseInt(val);
-                if (isNaN(num)) num = 0;
-                num = clamp(num, TARGET_MIN, TARGET_MAX);
-            }
-            input.value = num === 0 ? "" : num;
+            let val = parseInt(input.value);
+            if (isNaN(val)) val = 0;
+            val = clamp(val, TARGET_MIN, TARGET_MAX);
+            input.value = val;
             if (idx >= 0 && idx < banners.length) {
-                banners[idx] = num;
+                banners[idx] = val;
             }
         }
 
@@ -414,7 +414,7 @@
                 div.className = 'banner-item';
                 div.innerHTML = `
                     <span class="banner-label">Banner ${i + 1}</span>
-                    <input type="text" value="${target === 0 ? "" : target}" placeholder="0" data-index="${i}" class="banner-input">
+                    <input type="number" value="${target}" min="${TARGET_MIN}" max="${TARGET_MAX}" step="1" data-index="${i}" class="banner-input">
                 `;
                 bannerContainer.appendChild(div);
             }
@@ -422,22 +422,12 @@
             document.querySelectorAll('.banner-input').forEach(input => {
                 input.addEventListener('input', function() {
                     const idx = parseInt(this.dataset.index);
-                    let val = this.value.trim();
-                    let num;
-                    if (val === "") {
-                        num = 0;
-                    } else {
-                        num = parseInt(val);
-                        if (isNaN(num)) {
-                            this.value = "";
-                            num = 0;
-                        } else {
-                            num = clamp(num, TARGET_MIN, TARGET_MAX);
-                            this.value = num === 0 ? "" : num;
-                        }
-                    }
+                    let val = parseInt(this.value);
+                    if (isNaN(val)) val = 0;
+                    val = clamp(val, TARGET_MIN, TARGET_MAX);
+                    this.value = val;
                     if (idx >= 0 && idx < banners.length) {
-                        banners[idx] = num;
+                        banners[idx] = val;
                     }
                 });
                 input.addEventListener('blur', function() {
@@ -476,8 +466,8 @@
                 return;
             }
 
-            const initialPity = getValidNumber(initialPityInput, PITY_MIN, PITY_MAX);
-            const initialBudget = getValidNumber(budgetInput, BUDGET_MIN, BUDGET_MAX);
+            const initialPity = parseInt(initialPityInput.value) || 0;
+            const initialBudget = parseInt(budgetInput.value) || 0;
             const targets = banners.map(b => b);
 
             showLoading();
@@ -510,7 +500,7 @@
                 setThresholdFunc = Module.cwrap('setThreshold', null, ['number']);
 
                 // 初始化閾值
-                let threshold = getValidNumber(thresholdInput, THRESHOLD_MIN, THRESHOLD_MAX);
+                let threshold = parseInt(thresholdInput.value) || 0;
                 setThresholdFunc(threshold);
                 console.log(`✅ WASM 加載成功，閾值設為 ${threshold}`);
 
