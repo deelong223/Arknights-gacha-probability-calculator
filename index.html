@@ -447,7 +447,7 @@
         }
 
         function updateResult(prob) {
-            const percent = (Math.min(1, prob) * 100).toFixed(5);
+            const percent = (Math.min(1, prob) * 100).toFixed(3);
             resultDisplay.innerHTML = `<div class="result-value">${percent}%</div>`;
             resultSub.innerHTML = `You have ${percent}% chance to get your target.`;
         }
