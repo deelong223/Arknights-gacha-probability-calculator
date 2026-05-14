@@ -382,7 +382,6 @@
             setInputValue(thresholdInput, val);
             if (setThresholdFunc) {
                 setThresholdFunc(val);
-                console.log(`Threshold set to ${val}`);
             }
         }
 
@@ -410,7 +409,7 @@
                 div.className = 'banner-item';
                 div.innerHTML = `
                     <span class="banner-label">Banner ${i + 1}</span>
-                    <input type="text" value="${target === 0 ? "" : target}" data-index="${i}" class="banner-input">
+                    <input type="text" value="${target}" data-index="${i}" class="banner-input">
                 `;
                 bannerContainer.appendChild(div);
             }
@@ -430,7 +429,7 @@
                             num = 0;
                         } else {
                             num = clamp(num, TARGET_MIN, TARGET_MAX);
-                            this.value = num === 0 ? "" : num;
+                            this.value = num;
                         }
                     }
                     if (idx >= 0 && idx < banners.length) {
