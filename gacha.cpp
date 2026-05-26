@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <map>
 #include <string>
+#include <cstdint>
+#include <utility>
 
 using namespace std;
 
@@ -325,62 +327,91 @@ double calculateMultiBanner(const vector<int>& targets, int initialPity, int ini
 
     int maxRemaining = initialBudget + 10 * (int)targets.size();
     const int PITY_STATES = 80;
-    int stateSize = (maxRemaining + 1) * PITY_STATES;
 
-    vector<double> dp(stateSize, 0.0);
-    dp[initialBudget * PITY_STATES + initialPity] = 1.0;
+    // 定義樹的葉子節點結構（保底水位與其對應機率）
+    struct PityState {
+        int pity;
+        double prob;
+    };
+
+    // 建立樹狀分層結構：
+    // 外層 vector 的 Index 直接代表「剩餘預算」 (第一層)
+    // 內層 vector 儲存該預算下「真正存在的水位列表」 (第二層)
+    vector<vector<PityState>> curTree(maxRemaining + 1);
+    curTree[initialBudget].push_back({ initialPity, 1.0 });
+
+    // 為每個遇到的 pity 緩存轉移表
+    vector<vector<Transition>> transitionsForPity(PITY_STATES);
+    vector<bool> computedPity(PITY_STATES, false);
 
     for (int i = 0; i <= lastBannerIndex; ++i) {
         int target = targets[i];
         bool isLast = (i == lastBannerIndex);
-        vector<double> nextDp(stateSize, 0.0);
 
-        if (target == 0) {
-            for (int r = 0; r <= maxRemaining; ++r) {
-                for (int p = 0; p < PITY_STATES; ++p) {
-                    double prob = dp[r * PITY_STATES + p];
-                    if (prob > EPS) {
-                        nextDp[r * PITY_STATES + p] += prob;
-                    }
-                }
-            }
-            dp.swap(nextDp);
-            continue;
-        }
+        // target == 0 池子直接跳過，狀態保持不變
+        if (target == 0) continue;
 
-        // 預計算轉移
-        vector<vector<Transition>> transitionsForPity(PITY_STATES);
-        for (int pityIn = 0; pityIn < PITY_STATES; ++pityIn) {
-            transitionsForPity[pityIn] = getBannerTransition(pityIn, target, isLast);
-        }
+        fill(computedPity.begin(), computedPity.end(), false);
 
+        // 初始化下一池的樹狀結構
+        vector<vector<PityState>> nextTree(maxRemaining + 1);
+        bool anyActive = false;
+
+        // 遍歷當前樹的所有預算層
         for (int r = 0; r <= maxRemaining; ++r) {
-            for (int p = 0; p < PITY_STATES; ++p) {
-                double prob = dp[r * PITY_STATES + p];
-                if (prob < EPS) continue;
+            if (curTree[r].empty()) continue;
+
+            // 遍歷該預算層下的所有水位子節點
+            for (const auto& state : curTree[r]) {
+                int p = state.pity;
+                double prob = state.prob;
+
+                if (!computedPity[p]) {
+                    transitionsForPity[p] = getBannerTransition(p, target, isLast);
+                    computedPity[p] = true;
+                }
 
                 const auto& transitions = transitionsForPity[p];
                 for (const auto& trans : transitions) {
-                    int pulls = trans.pulls;
-                    int endPity = trans.endPity;
-                    double transProb = trans.prob;
-                    bool gotExtra = trans.gotExtra;
+                    if (r < trans.pulls) continue;
 
-                    if (r < pulls) continue;
-                    int newRemaining = r - pulls + (gotExtra ? 10 : 0);
-                    if (newRemaining > maxRemaining) newRemaining = maxRemaining;
-                    double newProb = prob * transProb;
+                    int newR = r - trans.pulls + (trans.gotExtra ? 10 : 0);
+                    if (newR > maxRemaining) newR = maxRemaining;
+
+                    double newProb = prob * trans.prob;
                     if (newProb < EPS) continue;
-                    nextDp[newRemaining * PITY_STATES + endPity] += newProb;
+
+                    // 【核心優化】：直接定位到 nextTree[newR]，在極小的水位列表中尋找並合併
+                    bool found = false;
+                    for (auto& s : nextTree[newR]) {
+                        if (s.pity == trans.endPity) {
+                            s.prob += newProb;
+                            found = true;
+                            break;
+                        }
+                    }
+                    // 如果這個水位節點不存在，則動態長出新的子節點
+                    if (!found) {
+                        nextTree[newR].push_back({ trans.endPity, newProb });
+                    }
+                    anyActive = true;
                 }
             }
         }
-        dp.swap(nextDp);
+
+        // 如果沒有任何可達狀態，提前返回 0
+        if (!anyActive) return 0.0;
+
+        // 更換樹結構，推進到下一個卡池
+        curTree.swap(nextTree);
     }
 
+    // 統計最終所有預算層與水位層的成功機率總和
     double successProb = 0.0;
-    for (size_t i = 0; i < dp.size(); ++i) {
-        successProb += dp[i];
+    for (int r = 0; r <= maxRemaining; ++r) {
+        for (const auto& state : curTree[r]) {
+            successProb += state.prob;
+        }
     }
     return min(1.0, successProb);
 }
