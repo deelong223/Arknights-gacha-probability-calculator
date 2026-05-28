@@ -56,37 +56,6 @@ double calculateSingleBanner(int target, int initialPity, int budget) {
     double success = 0.0;
 
     while (remainingBudget > 0) {
-        // 30抽里程碑
-        if (pulls == 30) {
-            vector<double> next(STATE_SIZE, 0.0);
-            for (int p = 0; p < PITY_MAX; ++p) {
-                for (int c = 0; c < COPIES; ++c) {
-                    for (int h = 0; h < 2; ++h) {
-                        double prob = dp[idx(p, c, h)];
-                        if (prob == 0.0) continue;
-                        for (int k = 0; k <= 10; ++k) {
-                            double pk = binomProbs[k];
-                            if (pk < EPS) continue;
-                            int nc = min(COPIES, c + k);
-                            next[idx(p, nc, h)] += prob * pk;
-                        }
-                    }
-                }
-            }
-            // 保留已達標狀態
-            for (int p = 0; p < PITY_MAX; ++p) {
-                for (int c = COPIES; c <= COPIES; ++c) {
-                    for (int h = 0; h < 2; ++h) {
-                        double prob = dp[idx(p, c, h)];
-                        if (prob > 0.0) {
-                            next[idx(p, c, h)] += prob;
-                        }
-                    }
-                }
-            }
-            dp.swap(next);
-        }
-
         // 將已達標狀態移出到 success
         for (int p = 0; p < PITY_MAX; ++p) {
             for (int c = COPIES; c <= COPIES; ++c) {
@@ -163,6 +132,38 @@ double calculateSingleBanner(int target, int initialPity, int budget) {
             }
         }
         dp.swap(next);
+
+        // 【修正：將 30 抽里程碑移至單抽結算完成後立即判定】
+        // 解決 budget = 30 時，因 remainingBudget == 0 提早跳出迴圈而漏算里程碑的問題
+        if (pulls == 30) {
+            vector<double> nextMilestone(STATE_SIZE, 0.0);
+            for (int p = 0; p < PITY_MAX; ++p) {
+                for (int c = 0; c < COPIES; ++c) {
+                    for (int h = 0; h < 2; ++h) {
+                        double prob = dp[idx(p, c, h)];
+                        if (prob == 0.0) continue;
+                        for (int k = 0; k <= 10; ++k) {
+                            double pk = binomProbs[k];
+                            if (pk < EPS) continue;
+                            int nc = min(COPIES, c + k);
+                            nextMilestone[idx(p, nc, h)] += prob * pk;
+                        }
+                    }
+                }
+            }
+            // 保留已達標狀態
+            for (int p = 0; p < PITY_MAX; ++p) {
+                for (int c = COPIES; c <= COPIES; ++c) {
+                    for (int h = 0; h < 2; ++h) {
+                        double prob = dp[idx(p, c, h)];
+                        if (prob > 0.0) {
+                            nextMilestone[idx(p, c, h)] += prob;
+                        }
+                    }
+                }
+            }
+            dp.swap(nextMilestone);
+        }
     }
 
     // 最後一次將剩餘已達標狀態加入 success
