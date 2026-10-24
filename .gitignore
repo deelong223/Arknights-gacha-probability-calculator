@@ -1,0 +1,5 @@
+# 建置產物與快取（可重建，不進版控）
+.build/
+.emcache/
+node_modules/
+*.o

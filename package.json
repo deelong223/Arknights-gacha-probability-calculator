@@ -1,0 +1,16 @@
+{
+  "name": "arknights-endfield-gacha-calculator",
+  "version": "2.0.0",
+  "private": true,
+  "description": "明日方舟：終末地 干員尋訪（特許尋訪）機率計算機 — C++/wasm 引擎 + 圖表 + 分享 + 三語 UI",
+  "scripts": {
+    "test": "node tests/run.js && node tests/check-i18n.js && node tests/check-dom.js && node tests/check-browser-path.js",
+    "test:fast": "node tests/run.js --fast",
+    "test:i18n": "node tests/check-i18n.js",
+    "test:dom": "node tests/check-dom.js",
+    "test:browser": "node tests/check-browser-path.js",
+    "bench": "node tests/run.js --fast --perf",
+    "profile": "node tests/profile.js",
+    "build": "tools\\build.cmd"
+  }
+}
