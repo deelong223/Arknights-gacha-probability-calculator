@@ -51,7 +51,9 @@ standalone WebAssembly 引擎，**沒有任何前端框架、沒有 CDN 依賴�
 | `gacha.wasm` | 由 `gacha.cpp` 編出的 standalone wasm（無任何 import） |
 | `gacha-wasm-b64.js` | 同一份 wasm 的 base64 內嵌版，讓 `file://` 直開也能跑 |
 | `tests/` | 測試（引擎數值、i18n、DOM 冒煙、瀏覽器載入路徑） |
-| `tools/build.ps1`, `tools/build.cmd` | 重新編譯 wasm |
+| `tools/build.js` | 跨平台建置入口（Vercel / CI 安全跳過） |
+| `tools/build.ps1`, `tools/build.cmd` | Windows 上實際編譯 wasm 的腳本 |
+| `vercel.json`, `.vercelignore` | Vercel 靜態部署設定 |
 | `docs/` | 預覽圖 |
 
 ---
