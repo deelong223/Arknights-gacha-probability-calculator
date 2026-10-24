@@ -57,7 +57,10 @@ function makeNode(name, ns) {
       return child;
     },
     remove() { if (node.parentNode) node.parentNode.removeChild(node); },
-    setAttribute(k, v) { node.attrs[k] = String(v); },
+    setAttribute(k, v) {
+      node.attrs[k] = String(v);
+      if (k === 'class') node.className = v;   // 讓 classList 反映 setAttribute('class')
+    },
     getAttribute(k) { return node.attrs[k]; },
     addEventListener(type, fn) { (node._listeners[type] = node._listeners[type] || []).push(fn); },
     dispatch(type, ev) { (node._listeners[type] || []).forEach((fn) => fn(ev || {})); },
@@ -168,6 +171,29 @@ const emptyBox = makeNode('div');
 sandbox.Charts.renderCurve(emptyBox, { t, points: [] });
 if (!emptyBox.childNodes.length) fail('renderCurve 空資料時沒有顯示提示');
 
+// 武器池曲線：guides 物件、指定 live 點、自訂 tooltip
+const wBox = makeNode('div');
+const wPoints = [{ x: 0, y: 0 }, { x: 2, y: 0.18 }, { x: 4, y: 0.38 }, { x: 8, y: 1 }];
+sandbox.Charts.renderCurve(wBox, {
+  t,
+  points: wPoints,
+  maxX: 8,
+  guides: [{ x: 4, text: '4' }, { x: 8, text: t('weapon.guardTag') }],
+  live: { x: 4, y: 0.38 },
+  tip: (p) => t('weapon.tip', { x: p.x, y: (p.y * 100).toFixed(1) }),
+});
+const wSvg = wBox.childNodes.find((n) => n.nodeName === 'svg');
+if (!wSvg) fail('renderCurve（武器池）沒有產生 svg');
+else {
+  const guides = wSvg.childNodes.filter((n) => n.nodeName === 'line' && n.classList.contains('marker-guide'));
+  const texts = wSvg.childNodes.filter((n) => n.nodeName === 'text');
+  if (guides.length !== 2) fail('武器池曲線的參考線數量應為 2，實際 ' + guides.length);
+  if (!texts.length) fail('武器池曲線沒有座標文字');
+  const live = wSvg.childNodes.find((n) => n.nodeName === 'circle');
+  if (!live || Number(live.attrs.cx) === undefined) fail('武器池曲線缺少 live 標記');
+  if (guides.length === 2) ok('renderCurve（武器池）：2 條參考線 + ' + texts.length + ' 個文字節點');
+}
+
 // ------------------------------------------------------------------ 測 share.js
 const canvas = sandbox.Share.render({
   t,
@@ -180,6 +206,7 @@ const canvas = sandbox.Share.render({
   curve: [{ x: 0, y: 0 }, { x: 120, y: 0.24 }, { x: 240, y: 0.26 }],
   maxX: 240,
   stats: { mean: 58, p50: 62, p90: 80 },
+  weapon: { upProb: 0.6342, claims: { p50: 6 }, need: { p50: 6 } },
   url: 'https://example.com/#t=1,1',
 });
 if (!canvas || !canvas.width) fail('Share.render 沒有回傳 canvas');

@@ -3,7 +3,10 @@
   'use strict';
 
   var BANNERS = 5;
-  var LIMITS = { pity: [0, 79], budget: [0, 5000], threshold: [0, 59], target: [0, 6] };
+  var LIMITS = {
+    pity: [0, 79], budget: [0, 5000], threshold: [0, 59], target: [0, 6],
+    wExtra: [0, 400000], wClaims: [0, 7],
+  };
 
   var state = {
     lang: 'zh-TW',
@@ -11,11 +14,15 @@
     pity: 0,
     budget: 120,
     threshold: 47,
+    wExtra: 0,
+    wClaims: 0,
     result: null,
     curve: null,
     curveKey: '',
     bannerStats: [],
     marginal: null,
+    weapon: null,
+    weaponKey: '',
     busy: false,
   };
 
@@ -68,6 +75,7 @@
       renderStats();
       renderCurveChart();
       renderCostChart();
+      renderWeapon();
     }
     updateUrl();
   }
@@ -121,6 +129,8 @@
     dom.pity.value = String(state.pity);
     dom.budget.value = String(state.budget);
     dom.threshold.value = String(state.threshold);
+    if (dom.wExtra) dom.wExtra.value = String(state.wExtra);
+    if (dom.wClaims) dom.wClaims.value = String(state.wClaims);
   }
 
   // ------------------------------------------------------------ 計算
@@ -215,25 +225,7 @@
       dom.gauge.classList.remove('pop');
       void dom.gauge.offsetWidth;
       dom.gauge.classList.add('pop');
-      spawnSparkles(clamp(state.result, 0, 1));
     }
-  }
-
-  function spawnSparkles(p) {
-    if (!dom.sparkles) return;
-    dom.sparkles.innerHTML = '';
-    var n = p >= 0.75 ? 10 : p >= 0.4 ? 6 : p >= 0.1 ? 3 : 0;
-    var glyphs = ['✨', '⭐', '💫', '🔷'];
-    for (var i = 0; i < n; i++) {
-      var s = document.createElement('i');
-      s.textContent = glyphs[i % glyphs.length];
-      s.style.left = (8 + Math.random() * 84) + '%';
-      s.style.bottom = (10 + Math.random() * 30) + '%';
-      s.style.animationDelay = (Math.random() * 0.9).toFixed(2) + 's';
-      s.style.fontSize = (0.7 + Math.random() * 0.7).toFixed(2) + 'rem';
-      dom.sparkles.appendChild(s);
-    }
-    enhanceEmoji(dom.sparkles);
   }
 
   function renderStats() {
@@ -291,6 +283,7 @@
       t: t,
       points: buildCurve(),
       maxX: Math.max(1, state.budget),
+      guides: [120, 240],
       onPick: function (x) {
         state.budget = clamp(x, LIMITS.budget[0], LIMITS.budget[1]);
         syncInputsFromState();
@@ -313,6 +306,97 @@
     window.Charts.renderCost(dom.costBox, rows, t);
   }
 
+  // ------------------------------------------------------------ 武器池
+  function fmtInt(v) {
+    var n = Math.round(v || 0);
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function weaponConfig() {
+    return {
+      targets: state.targets,
+      pity: state.pity,
+      budget: state.budget,
+      threshold: state.threshold,
+      extraQuota: state.wExtra,
+      startClaims: state.wClaims,
+    };
+  }
+
+  function computeWeapon() {
+    if (!window.Weapon) return null;
+    var cfg = weaponConfig();
+    var key = cfg.targets.join(',') + '|' + cfg.pity + '|' + cfg.budget + '|' +
+      cfg.threshold + '|' + cfg.extraQuota + '|' + cfg.startClaims;
+    if (state.weaponKey === key && state.weapon) return state.weapon;
+    state.weapon = window.Weapon.simulate(cfg);
+    state.weaponKey = key;
+    return state.weapon;
+  }
+
+  function renderWeapon() {
+    if (!dom.weaponUp) return;
+    var w = computeWeapon();
+    if (!w) return;
+
+    var pct = clamp(w.upProb, 0, 1) * 100;
+    dom.weaponUp.textContent = (Math.round(pct * 100) / 100).toFixed(2) + '%';
+    dom.weaponUp.title = pct.toFixed(4) + '%';
+    dom.weaponSub.textContent = t('weapon.sub', { n: fmtInt(w.iters) });
+    dom.weaponNote.textContent = t('weapon.note', {
+      claims: Math.round(w.claims.p50),
+      guard: w.guaranteeAt,
+    });
+
+    var cells = [
+      { label: t('weapon.quota'), value: fmtInt(w.quota.mean), hi: false,
+        hint: 'P10–P90 ' + fmtInt(w.quota.p10) + '–' + fmtInt(w.quota.p90) },
+      { label: t('weapon.claims'), value: Math.round(w.claims.p50) + ' ' + t('weapon.unit'), hi: true,
+        hint: 'P10–P90 ' + Math.round(w.claims.p10) + '–' + Math.round(w.claims.p90) },
+      { label: t('weapon.need'), value: w.need.p50 + ' ' + t('weapon.unit'), hi: false,
+        hint: t('weapon.needHint', { guard: w.guaranteeAt }) },
+      { label: t('weapon.six'), value: (clamp(w.sixProb, 0, 1) * 100).toFixed(1) + '%', hi: false,
+        hint: '' },
+    ];
+
+    dom.weaponStats.innerHTML = '';
+    cells.forEach(function (c) {
+      var el = document.createElement('div');
+      el.className = 'stat' + (c.hi ? ' hi' : '');
+      var b = document.createElement('b');
+      b.textContent = c.value;
+      el.appendChild(b);
+      var s = document.createElement('span');
+      s.textContent = c.label;
+      el.appendChild(s);
+      if (c.hint) el.title = c.hint;
+      dom.weaponStats.appendChild(el);
+    });
+
+    renderWeaponChart(w);
+  }
+
+  function renderWeaponChart(w) {
+    var maxX = w.curve.length ? w.curve[w.curve.length - 1].x : w.guaranteeAt;
+    var at = clamp(Math.round(w.claims.p50), 0, maxX);
+    var y = 0;
+    w.curve.forEach(function (p) { if (p.x === at) y = p.y; });
+    var guides = [];
+    if (at > 0 && at !== w.guaranteeAt) guides.push({ x: at, text: String(at) });
+    guides.push({ x: w.guaranteeAt, text: t('weapon.guardTag') });
+
+    window.Charts.renderCurve(dom.weaponBox, {
+      t: t,
+      points: w.curve,
+      maxX: maxX,
+      guides: guides,
+      live: { x: at, y: y },
+      tip: function (p) {
+        return t('weapon.tip', { x: Math.round(p.x), y: (p.y * 100).toFixed(1) });
+      },
+    });
+  }
+
   async function run() {
     if (state.busy) return;
     state.busy = true;
@@ -329,6 +413,7 @@
       renderStats();
       renderCurveChart();
       renderCostChart();
+      renderWeapon();
       dom.shareCard.hidden = false;
       updateUrl();
     } catch (e) {
@@ -349,6 +434,8 @@
       'p=' + state.pity,
       'b=' + state.budget,
       'th=' + state.threshold,
+      'wq=' + state.wExtra,
+      'wc=' + state.wClaims,
       'l=' + state.lang,
     ];
     try {
@@ -372,6 +459,8 @@
     if (out.p !== undefined) state.pity = clamp(num(out.p, 0), 0, 79);
     if (out.b !== undefined) state.budget = clamp(num(out.b, 0), 0, 5000);
     if (out.th !== undefined) state.threshold = clamp(num(out.th, 47), 0, 59);
+    if (out.wq !== undefined) state.wExtra = clamp(num(out.wq, 0), LIMITS.wExtra[0], LIMITS.wExtra[1]);
+    if (out.wc !== undefined) state.wClaims = clamp(num(out.wc, 0), LIMITS.wClaims[0], LIMITS.wClaims[1]);
     if (out.l && window.I18N.LANGS.indexOf(out.l) >= 0) state.lang = out.l;
     return true;
   }
@@ -392,6 +481,10 @@
     if (state.bannerStats.length) {
       var s = state.bannerStats[0].stats;
       lines.push('📊 ' + t('stats.mean') + ' ' + Math.round(s.mean) + ' · ' + t('stats.median') + ' ' + Math.round(s.p50) + ' · P90 ' + Math.round(s.p90));
+    }
+    if (state.weapon) {
+      lines.push('⚔️ ' + t('weapon.upCaption') + ' ' + (state.weapon.upProb * 100).toFixed(2) + '% · ' +
+        t('weapon.claims') + ' ' + Math.round(state.weapon.claims.p50) + t('weapon.unit'));
     }
     lines.push(shareUrl());
     return lines.join('\n');
@@ -468,6 +561,27 @@
       });
     });
 
+    // 武器池輸入：只重算武器段，不必重跑角色池 DP
+    [
+      ['wExtra', function (v) { state.wExtra = v; }],
+      ['wClaims', function (v) { state.wClaims = v; }],
+    ].forEach(function (pair) {
+      var input = dom[pair[0]];
+      if (!input) return;
+      var apply = function () {
+        var limits = LIMITS[pair[0]];
+        var v = clamp(num(input.value, state[pair[0]]), limits[0], limits[1]);
+        pair[1](v);
+        input.value = String(v);
+        updateUrl();
+        renderWeapon();
+      };
+      input.addEventListener('change', apply);
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') apply();
+      });
+    });
+
     document.querySelectorAll('[data-lang]').forEach(function (btn) {
       btn.addEventListener('click', function () { setLang(btn.getAttribute('data-lang')); });
     });
@@ -482,6 +596,8 @@
       state.pity = 0;
       state.budget = 120;
       state.threshold = 47;
+      state.wExtra = 0;
+      state.wClaims = 0;
       syncInputsFromState();
       renderBannerRows();
       updateUrl();
@@ -525,6 +641,7 @@
       curve: state.curve || [],
       maxX: Math.max(1, state.budget),
       stats: state.bannerStats.length ? state.bannerStats[0].stats : null,
+      weapon: state.weapon,
       url: shareUrl(),
     });
   }
@@ -532,7 +649,8 @@
   // ------------------------------------------------------------ 啟動
   function cacheDom() {
     var ids = ['banners', 'pity', 'budget', 'threshold', 'calcBtn', 'resetBtn',
-      'gauge', 'gaugeBar', 'gaugeValue', 'resultSummary', 'sparkles',
+      'gauge', 'gaugeBar', 'gaugeValue', 'resultSummary',
+      'weaponUp', 'weaponNote', 'weaponStats', 'weaponSub', 'weaponBox', 'wExtra', 'wClaims',
       'stats', 'statsSub', 'curveBox', 'costBox', 'shareCard',
       'copyTextBtn', 'copyImageBtn', 'downloadBtn', 'copyLinkBtn',
       'rulesBtn', 'rulesClose', 'rulesBody', 'rulesTitle', 'modal', 'toast'];

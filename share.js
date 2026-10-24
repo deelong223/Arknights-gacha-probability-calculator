@@ -231,6 +231,15 @@
       ctx.fillText(c.label, cx + 24, 1052);
     });
 
+    // ---- 武器池 ----
+    if (data.weapon) {
+      ctx.fillStyle = 'rgba(255,180,94,0.95)';
+      ctx.font = '700 24px Inter, system-ui, sans-serif';
+      var line = '⚔️ ' + t('weapon.upCaption') + ' ' + (data.weapon.upProb * 100).toFixed(2) + '%' +
+        '   ·   ' + t('weapon.claims') + ' ' + Math.round(data.weapon.claims.p50) + ' ' + t('weapon.unit');
+      ctx.fillText(line, 64, 1128);
+    }
+
     // ---- 頁尾 ----
     ctx.fillStyle = 'rgba(120,128,150,0.95)';
     ctx.font = '500 20px Inter, system-ui, sans-serif';

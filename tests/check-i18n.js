@@ -48,7 +48,7 @@ LANGS.forEach((lang) => {
 });
 
 // 3. 程式碼裡直接呼叫的 key（含動態字串）
-const jsFiles = ['app.js', 'charts.js', 'share.js'];
+const jsFiles = ['app.js', 'charts.js', 'share.js', 'weapon.js'];
 const directKeys = new Set();
 for (const file of jsFiles) {
   const src = fs.readFileSync(path.join(ROOT, file), 'utf8');

@@ -183,15 +183,27 @@ body {
 .result-summary { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.6; }
 .result-placeholder { color: var(--dim); font-size: 0.86rem; padding: 2.2rem 0.5rem; }
 
-.sparkles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.sparkles i {
-  position: absolute; font-size: 0.9rem; opacity: 0; animation: sparkle 2.6s ease-out infinite;
+/* ---------------------------------------------------------------- 武器池 */
+.weapon-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr); gap: 1.2rem; align-items: start; }
+@media (max-width: 980px) { .weapon-grid { grid-template-columns: 1fr; } }
+
+.weapon-head { display: flex; align-items: center; gap: 0.95rem; margin-bottom: 0.95rem; }
+.weapon-head b {
+  font-size: 2.7rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+  background: linear-gradient(120deg, #ffd9a0, #ffb45e 55%, #ff8f6b);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 6px 18px rgba(255, 180, 94, 0.28));
 }
-@keyframes sparkle {
-  0% { opacity: 0; transform: translateY(10px) scale(0.6); }
-  35% { opacity: 0.95; }
-  100% { opacity: 0; transform: translateY(-42px) scale(1.1); }
-}
+.weapon-head-text { display: flex; flex-direction: column; gap: 0.18rem; min-width: 0; }
+.weapon-head-text small { font-size: 0.76rem; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }
+.weapon-head-text em { font-size: 0.73rem; color: var(--dim); font-style: normal; line-height: 1.5; }
+
+.weapon-card .stats b { font-size: 1.22rem; }
+.weapon-card .stat.hi b { background: linear-gradient(120deg, #ffd9a0, #ffb45e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin-top: 0.95rem; }
+.row2 .field { margin-bottom: 0; }
+@media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } }
 
 /* ---------------------------------------------------------------- 統計 */
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7rem; }

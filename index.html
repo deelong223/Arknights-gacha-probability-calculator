@@ -99,13 +99,56 @@
             <b id="gaugeValue">—</b>
             <small data-i18n="result.caption">達成全部目標的機率</small>
           </div>
-          <div id="sparkles" class="sparkles" aria-hidden="true"></div>
         </div>
 
         <p id="resultSummary" class="result-summary">—</p>
         </div>
       </section>
     </div>
+
+    <!-- ---------------------------------------------------- 武器池 -->
+    <section class="card weapon-card" style="margin-top:1.1rem" aria-labelledby="weaponTitle">
+      <header>
+        <span aria-hidden="true">⚔️</span>
+        <h2 id="weaponTitle" data-i18n="weapon.title">武器池「武庫申領」</h2>
+        <span id="weaponSub" class="tag"></span>
+      </header>
+
+      <div class="weapon-grid">
+        <div class="weapon-main">
+          <div class="weapon-head">
+            <b id="weaponUp">—</b>
+            <span class="weapon-head-text">
+              <small data-i18n="weapon.upCaption">當期專武到手機率</small>
+              <em id="weaponNote">—</em>
+            </span>
+          </div>
+
+          <div id="weaponStats" class="stats"></div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="wExtra"><span aria-hidden="true">🧾</span><span data-i18n="weapon.extra">額外武庫配額</span></label>
+              <input id="wExtra" type="text" inputmode="numeric" value="0">
+              <p class="hint" data-i18n="weapon.extraHint">已囤的配額、禮包或商店換到的量</p>
+            </div>
+            <div class="field">
+              <label for="wClaims"><span aria-hidden="true">📌</span><span data-i18n="weapon.start">本期已申領次數</span></label>
+              <input id="wClaims" type="text" inputmode="numeric" value="0">
+              <p class="hint" data-i18n="weapon.startHint">0–7：第 8 次申領必得當期 UP</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="weapon-chart">
+          <div class="chart-head">
+            <h3 data-i18n="weapon.curveTitle">申領次數 → 專武機率</h3>
+            <p data-i18n="weapon.curveDesc">虛線為你的配額位置，終點是本期 UP 保底</p>
+          </div>
+          <div id="weaponBox" class="chart-box"></div>
+        </div>
+      </div>
+    </section>
 
     <!-- ---------------------------------------------------- 統計 -->
     <section class="card" style="margin-top:1.1rem" aria-labelledby="statsTitle">
@@ -191,6 +234,7 @@
 <script src="gacha-wasm-b64.js"></script>
 <script src="i18n.js"></script>
 <script src="gacha.js"></script>
+<script src="weapon.js"></script>
 <script src="charts.js"></script>
 <script src="share.js"></script>
 <script src="app.js"></script>

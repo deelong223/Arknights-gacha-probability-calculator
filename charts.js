@@ -14,7 +14,7 @@
   }
 
   function niceStep(range) {
-    var raw = range / 6;
+    var raw = range / 8;
     var pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
     var n = raw / pow;
     var mult = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
@@ -70,14 +70,22 @@
     }
     el('line', { class: 'axis-line', x1: padL, x2: W - padR, y1: H - padB, y2: H - padB, stroke: 'rgba(255,255,255,0.18)' }, g);
 
-    // 120 / 240 參考線
-    [120, 240].forEach(function (guard) {
-      if (guard > maxX) return;
-      el('line', { class: 'marker-guide', x1: sx(guard), x2: sx(guard), y1: padT, y2: H - padB }, svg);
-      if (guard < maxX * 0.92) {
-        var gt = el('text', { class: 'marker-text', x: sx(guard) + 3, y: padT + 9 }, svg);
-        gt.textContent = guard;
-      }
+    // 參考線（角色池：120 / 240；武器池：保底 / 你的配額）
+    var guides = opts.guides || [];
+    guides.forEach(function (item) {
+      var gx = (typeof item === 'number') ? item : item.x;
+      if (!(gx > 0) || gx > maxX) return;
+      el('line', { class: 'marker-guide', x1: sx(gx), x2: sx(gx), y1: padT, y2: H - padB }, svg);
+      var text = (typeof item === 'number') ? String(gx) : String(item.text || '');
+      if (!text) return;
+      var right = sx(gx) > (W - padR) - 34;
+      var gt = el('text', {
+        class: 'marker-text',
+        x: right ? sx(gx) - 4 : sx(gx) + 4,
+        y: H - padB - 6,
+        'text-anchor': right ? 'end' : 'start',
+      }, svg);
+      gt.textContent = text;
     });
 
     // 線 + 面積
@@ -89,8 +97,8 @@
     el('path', { class: 'series-area', d: areaD }, svg);
     var line = el('path', { class: 'series-line', d: d }, svg);
 
-    // 目前預算標記
-    var live = points[points.length - 1];
+    // 目前位置標記
+    var live = opts.live || points[points.length - 1];
     el('circle', { class: 'marker-live', cx: sx(live.x), cy: sy(live.y), r: 4.5 }, svg);
 
     // hover 互動
@@ -119,7 +127,9 @@
       hoverDot.setAttribute('cx', sx(p.x));
       hoverDot.setAttribute('cy', sy(p.y));
       hoverDot.style.opacity = 1;
-      tip.textContent = t('chart.tip', { x: Math.round(p.x), y: (p.y * 100).toFixed(2) });
+      tip.textContent = (typeof opts.tip === 'function')
+        ? opts.tip(p)
+        : t('chart.tip', { x: Math.round(p.x), y: (p.y * 100).toFixed(2) });
       var box = svg.getBoundingClientRect();
       tip.style.left = ((sx(p.x) / W) * box.width) + 'px';
       tip.style.top = ((sy(p.y) / H) * box.height) + 'px';
