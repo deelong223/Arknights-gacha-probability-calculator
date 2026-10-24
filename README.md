@@ -84,21 +84,34 @@ standalone WebAssembly 引擎，**沒有任何前端框架、沒有 CDN 依賴�
 
 ---
 
-## 4. 建置
+## 4. 建置與部署
+
+### 重新編譯 wasm（只有改了 `gacha.cpp` 才需要）
 
 需要 emsdk（預設路徑 `C:\emsdk`，可用環境變數 `EMSDK_ROOT` 覆寫）。
 
 ```
-tools\build.cmd
+npm run build        # 跨平台入口：找不到 emsdk 就跳過，不會讓建置失敗
+npm run build:wasm   # 強制重建（--force）
 ```
 
-會依序做三件事：`clang -c gacha.cpp`（`-O3 -msimd128`）→ `emcc` 只做連結變成 `gacha.wasm`
-→ 產生 `gacha-wasm-b64.js`。
+`tools/build.js` 會依序做三件事：`clang -c gacha.cpp`（`-O3 -msimd128`）→ `emcc` 只做連結變成
+`gacha.wasm` → 產生 `gacha-wasm-b64.js`。在沒有 emsdk 的機器（Vercel / Linux CI）會直接跳過並沿用
+已提交的產物。
 
 > 為什麼分兩步：本專案的開發環境會封鎖 python `tempfile.mkdtemp()` 建的目錄，
 > 而 emcc 內部會用暫存目錄編譯，因此改成先自己編 `.o`、再讓 emcc 只連結。
 > 另外 `-fno-exceptions` 會讓 libc++ 連進 stdio（wasm 會出現 `wasi_snapshot_preview1` import），
 > 所以不要加。
+
+### 部署（Vercel / GitHub Pages）
+
+這是純靜態網站：`gacha.wasm` 與 `gacha-wasm-b64.js` 都已進版控，**雲端不需要建置**。
+
+- `vercel.json`：`outputDirectory: "."`、`gacha.wasm` 補上 `Content-Type: application/wasm`。
+- `.vercelignore`：排除 `package.json`、`tools/`、`tests/`，讓 Vercel 不會去跑 `npm run build`
+  （之前的失敗就是 Vercel 在 Linux 上執行 Windows 的 `tools\build.cmd`）。
+- GitHub Pages：Settings → Pages → 選 `main` / root 即可。
 
 ---
 

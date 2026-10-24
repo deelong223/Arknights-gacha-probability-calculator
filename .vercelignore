@@ -1,0 +1,14 @@
+# Vercel 只部署「靜態網站本體」。
+# 這個專案不需要在雲端建置：gacha.wasm 與 gacha-wasm-b64.js 都已提交進版控，
+# 前端直接用它們。把 package.json 一起排除，Vercel 就不會嘗試執行 npm run build。
+.build/
+.emcache/
+node_modules/
+tests/
+tools/
+docs/
+*.o
+README.md
+package.json
+package-lock.json
+pnpm-lock.yaml
